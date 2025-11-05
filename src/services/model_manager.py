@@ -7,7 +7,7 @@ Manages loading, unloading, and accessing LLM models with different backends.
 from typing import Dict, Optional, Any
 import asyncio
 from ..models.backend import ModelBackend, ModelBackendFactory, ModelBackendType
-from ..models.server import LLMServer, ServerMode
+from ..models.server import LLMServer, ServerMode, ServerStatus
 from ..lib.logging import logger
 
 # Import to register all backends
@@ -21,10 +21,11 @@ class ModelManager:
     Provides centralized model management with lazy loading and caching.
     """
     
-    def __init__(self):
+    def __init__(self, persistence=None):
         """Initialize model manager."""
         self._models: Dict[str, ModelBackend] = {}
         self._lock = asyncio.Lock()
+        self._persistence = persistence
     
     async def load_model(self, server: LLMServer) -> ModelBackend:
         """
@@ -86,6 +87,16 @@ class ModelManager:
                 self._models[server.id] = backend
                 logger.info(f"Successfully loaded model for server {server.name}")
                 
+                # Update server status to ACTIVE
+                if self._persistence:
+                    try:
+                        server.status = ServerStatus.ACTIVE
+                        server.update_timestamp()
+                        self._persistence.update_server(server)
+                        logger.info(f"Updated server {server.name} status to ACTIVE")
+                    except Exception as e:
+                        logger.warning(f"Failed to update server status: {e}")
+                
                 return backend
                 
             except Exception as e:
@@ -118,6 +129,19 @@ class ModelManager:
                 del self._models[server_id]
             
             logger.info(f"Model {server_id} unloaded successfully")
+            
+            # Update server status to INACTIVE
+            if self._persistence:
+                try:
+                    servers = self._persistence.get_servers()
+                    server = next((s for s in servers if s.id == server_id), None)
+                    if server:
+                        server.status = ServerStatus.INACTIVE
+                        server.update_timestamp()
+                        self._persistence.update_server(server)
+                        logger.info(f"Updated server status to INACTIVE")
+                except Exception as e:
+                    logger.warning(f"Failed to update server status: {e}")
     
     def get_backend(self, server_id: str) -> Optional[ModelBackend]:
         """
@@ -173,6 +197,11 @@ class ModelManager:
                         del self._models[server_id]
             
             logger.info("All models unloaded")
+    
+    def set_persistence(self, persistence):
+        """Set the persistence layer for status tracking."""
+        self._persistence = persistence
+        logger.info("Persistence layer configured for model_manager")
 
 
 # Global model manager instance

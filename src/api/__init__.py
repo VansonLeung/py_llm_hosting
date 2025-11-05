@@ -16,6 +16,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Startup event to initialize model_manager with persistence
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup."""
+    from src.services.model_manager import model_manager
+    from src.lib.persistence import Persistence
+    
+    persistence = Persistence()
+    model_manager.set_persistence(persistence)
+
 # Import and include routers
 from . import chat, embeddings, ranking
 
