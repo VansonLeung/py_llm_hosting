@@ -1,0 +1,65 @@
+{
+  "servers": [
+    {
+      "id": "eb75e115-8421-408b-ac16-eaa97fed0727",
+      "name": "tinyllama-test",
+      "model_name": "tinyllama",
+      "status": "active",
+      "mode": "self-hosted",
+      "endpoint_url": null,
+      "model_path": "/Users/van/.cache/py_llm_hosting/models/models--TheBloke--TinyLlama-1.1B-Chat-v1.0-GGUF/snapshots/52e7645ba7c309695bec7ac98f4f005b139cf465/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+      "backend_type": "llama-cpp",
+      "backend_config": {
+        "n_gpu_layers": 0
+      },
+      "config": {},
+      "created_at": "2025-11-05 11:46:03.145387",
+      "updated_at": "2025-11-05 12:59:53.467806"
+    },
+    {
+      "id": "a9a08fe5-bb3e-40a7-9604-f12a7344056b",
+      "name": "qwen-mlx",
+      "model_name": "qwen2.5-0.5b",
+      "status": "active",
+      "mode": "self-hosted",
+      "endpoint_url": null,
+      "model_path": "mlx-community/Qwen2.5-0.5B-Instruct-4bit",
+      "backend_type": "mlx",
+      "backend_config": {},
+      "config": {},
+      "created_at": "2025-11-05 12:00:06.698239",
+      "updated_at": "2025-11-05 13:18:09.774381"
+    },
+    {
+      "id": "fb3f549f-7d9e-4139-bfb5-11830b8eede3",
+      "name": "Nomic Embed",
+      "model_name": "all-minilm",
+      "status": "active",
+      "mode": "self-hosted",
+      "endpoint_url": null,
+      "model_path": "/Users/van/.cache/py_llm_hosting/models/models--nomic-ai--nomic-embed-text-v1.5-GGUF/snapshots/0188c9bf409793f810680a5a431e7b899c46104c/nomic-embed-text-v1.5.Q4_K_M.gguf",
+      "backend_type": "llama-cpp",
+      "backend_config": {
+        "n_gpu_layers": 0
+      },
+      "config": {},
+      "created_at": "2025-11-05 13:05:14.026726",
+      "updated_at": "2025-11-05 13:18:10.697165"
+    },
+    {
+      "id": "3651aa57-b764-44e8-886c-6118ec943694",
+      "name": "bge-reranker-v2-m3",
+      "model_name": "bge-reranker-v2-m3",
+      "status": "active",
+      "mode": "self-hosted",
+      "endpoint_url": null,
+      "model_path": "/Users/van/.cache/py_llm_hosting/models/models--BAAI--bge-reranker-v2-m3/snapshots/953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+      "backend_type": "reranker",
+      "backend_config": {},
+      "config": {},
+      "created_at": "2025-11-05 13:14:29.431597",
+      "updated_at": "2025-11-05 13:16:54.788563"
+    }
+  ],
+  "mcp_sessions": []
+}

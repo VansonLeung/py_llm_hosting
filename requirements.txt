@@ -38,3 +38,8 @@ accelerate==1.1.1
 
 # Option 4: MLX-VLM (Vision-Language Models on Apple Silicon)
 # mlx-vlm==0.1.0
+
+# Option 5: Reranker backend (document reranking with cross-encoders)
+sentence-transformers==5.1.2
+scikit-learn==1.7.2
+scipy==1.16.3

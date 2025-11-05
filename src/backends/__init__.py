@@ -38,6 +38,13 @@ def register_all_backends():
         ModelBackendFactory.register_backend(ModelBackendType.MLX_VLM, MLXVLMBackend)
     except ImportError:
         pass  # Backend dependencies not installed
+    
+    # Register Reranker backend
+    try:
+        from src.backends.reranker_backend import RerankerBackend
+        ModelBackendFactory.register_backend(ModelBackendType.RERANKER, RerankerBackend)
+    except ImportError:
+        pass  # Backend dependencies not installed
 
 
 # Auto-register when module is imported

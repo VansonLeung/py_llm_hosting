@@ -17,7 +17,7 @@ def cli(ctx, data_file):
 @click.option('--mode', type=click.Choice(['proxy', 'self-hosted']), default='proxy', help='Server mode')
 @click.option('--endpoint', help='Server endpoint URL (for proxy mode)')
 @click.option('--model-path', help='HuggingFace model ID or local path (for self-hosted mode)')
-@click.option('--backend', type=click.Choice(['llama-cpp', 'transformers', 'vllm', 'mlx', 'mlx-vlm']), help='Backend type (for self-hosted mode)')
+@click.option('--backend', type=click.Choice(['llama-cpp', 'transformers', 'vllm', 'mlx', 'mlx-vlm', 'reranker']), help='Backend type (for self-hosted mode)')
 @click.option('--gpu-layers', type=int, default=0, help='Number of GPU layers (llama-cpp)')
 @click.option('--load-in-4bit', is_flag=True, help='Load in 4-bit (transformers)')
 @click.option('--load-in-8bit', is_flag=True, help='Load in 8-bit (transformers)')

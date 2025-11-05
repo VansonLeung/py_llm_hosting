@@ -16,6 +16,7 @@ class ModelBackendType(str, Enum):
     VLLM = "vllm"
     MLX = "mlx"
     MLX_VLM = "mlx_vlm"
+    RERANKER = "reranker"
     PROXY = "proxy"  # External server proxy (existing functionality)
 
 

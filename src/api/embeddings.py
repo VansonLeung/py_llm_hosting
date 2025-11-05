@@ -35,19 +35,29 @@ async def handle_self_hosted_embeddings(server, request: EmbeddingsRequest):
     texts = [request.input] if isinstance(request.input, str) else request.input
     
     # Generate embeddings (backends are async)
-    embeddings = []
-    for text in texts:
-        embedding_dict = await backend.embed([text])
-        # Extract embedding array from response
-        if isinstance(embedding_dict, dict) and "data" in embedding_dict:
-            embedding = embedding_dict["data"][0]
-        elif isinstance(embedding_dict, list):
-            embedding = embedding_dict
-        else:
-            embedding = embedding_dict.get("embedding", [])
-        embeddings.append(embedding)
+    # Note: Some backends return full response, others just embeddings
+    embedding_dict = await backend.embed(texts)
     
-    # Format response in OpenAI format
+    # If backend returns OpenAI-compatible format, use it directly
+    if isinstance(embedding_dict, dict) and "data" in embedding_dict:
+        # Use the backend's response directly
+        return {
+            "object": "list",
+            "data": embedding_dict["data"],
+            "model": request.model,
+            "usage": embedding_dict.get("usage", {
+                "prompt_tokens": 0,
+                "total_tokens": 0
+            })
+        }
+    
+    # Otherwise, format as OpenAI response
+    embeddings = []
+    if isinstance(embedding_dict, list):
+        embeddings = embedding_dict
+    else:
+        embeddings = [embedding_dict.get("embedding", [])]
+    
     return {
         "object": "list",
         "data": [
@@ -60,7 +70,7 @@ async def handle_self_hosted_embeddings(server, request: EmbeddingsRequest):
         ],
         "model": request.model,
         "usage": {
-            "prompt_tokens": 0,  # TODO: implement token counting
+            "prompt_tokens": 0,
             "total_tokens": 0
         }
     }

@@ -66,6 +66,7 @@ class ModelManager:
                     "vllm": ModelBackendType.VLLM,
                     "mlx": ModelBackendType.MLX,
                     "mlx-vlm": ModelBackendType.MLX_VLM,
+                    "reranker": ModelBackendType.RERANKER,
                     "transformers": ModelBackendType.LLAMACPP,  # Use llamacpp as fallback
                 }
                 
