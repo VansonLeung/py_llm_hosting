@@ -156,6 +156,10 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
 - [ ] TXXX Security hardening
 - [ ] TXXX Run quickstart.md validation
+- [ ] TXXX Ensure code modularity and clean-readability per Code Quality principle
+- [ ] TXXX Run comprehensive tests including performance per Testing Standards principle
+- [ ] TXXX Validate user experience consistency per UX Consistency principle
+- [ ] TXXX Verify performance benchmarks per Performance Requirements principle
 
 ---
 

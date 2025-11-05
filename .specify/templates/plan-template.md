@@ -31,7 +31,10 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+- Code must be modularized and use callbacks for inter-modular communication
+- Testing standards must be met with comprehensive test coverage
+- User experience consistency ensured across all interfaces
+- Performance requirements satisfied with benchmarks
 
 ## Project Structure
 
