@@ -20,7 +20,7 @@ def test_single_embedding():
         f"{BASE_URL}/embeddings",
         headers={"Content-Type": "application/json"},
         json={
-            "model": "nomic-embed-v1.5",
+            "model": "bge-micro-v2",
             "input": "Hello, how are you?"
         }
     )
@@ -54,7 +54,7 @@ def test_batch_embeddings():
         f"{BASE_URL}/embeddings",
         headers={"Content-Type": "application/json"},
         json={
-            "model": "nomic-embed-v1.5",
+            "model": "bge-micro-v2",
             "input": texts
         }
     )
@@ -97,11 +97,11 @@ def test_semantic_similarity():
     for text1, text2 in pairs:
         response1 = requests.post(
             f"{BASE_URL}/embeddings",
-            json={"model": "nomic-embed-v1.5", "input": text1}
+            json={"model": "bge-micro-v2", "input": text1}
         )
         response2 = requests.post(
             f"{BASE_URL}/embeddings",
-            json={"model": "nomic-embed-v1.5", "input": text2}
+            json={"model": "bge-micro-v2", "input": text2}
         )
         
         if response1.status_code == 200 and response2.status_code == 200:
@@ -119,7 +119,7 @@ def main():
     print("="*60)
     print("EMBEDDINGS ENDPOINT TESTING")
     print("="*60)
-    print("\nTesting with model: nomic-embed-v1.5")
+    print("\nTesting with model: bge-micro-v2")
     print("Endpoint: /v1/embeddings")
     
     try:

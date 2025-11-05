@@ -45,6 +45,13 @@ def register_all_backends():
         ModelBackendFactory.register_backend(ModelBackendType.RERANKER, RerankerBackend)
     except ImportError:
         pass  # Backend dependencies not installed
+    
+    # Register Sentence Transformers backend
+    try:
+        from src.backends.sentence_transformers_backend import SentenceTransformersBackend
+        ModelBackendFactory.register_backend(ModelBackendType.SENTENCE_TRANSFORMERS, SentenceTransformersBackend)
+    except ImportError:
+        pass  # Backend dependencies not installed
 
 
 # Auto-register when module is imported

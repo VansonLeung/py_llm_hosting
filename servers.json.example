@@ -7,7 +7,7 @@
       "status": "active",
       "mode": "self-hosted",
       "endpoint_url": null,
-      "model_path": "/Users/van/.cache/py_llm_hosting/models/models--TheBloke--TinyLlama-1.1B-Chat-v1.0-GGUF/snapshots/52e7645ba7c309695bec7ac98f4f005b139cf465/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+      "model_path": "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
       "backend_type": "llama-cpp",
       "backend_config": {
         "n_gpu_layers": 0
@@ -28,23 +28,7 @@
       "backend_config": {},
       "config": {},
       "created_at": "2025-11-05 12:00:06.698239",
-      "updated_at": "2025-11-05 13:18:09.774381"
-    },
-    {
-      "id": "fb3f549f-7d9e-4139-bfb5-11830b8eede3",
-      "name": "Nomic Embed",
-      "model_name": "all-minilm",
-      "status": "active",
-      "mode": "self-hosted",
-      "endpoint_url": null,
-      "model_path": "/Users/van/.cache/py_llm_hosting/models/models--nomic-ai--nomic-embed-text-v1.5-GGUF/snapshots/0188c9bf409793f810680a5a431e7b899c46104c/nomic-embed-text-v1.5.Q4_K_M.gguf",
-      "backend_type": "llama-cpp",
-      "backend_config": {
-        "n_gpu_layers": 0
-      },
-      "config": {},
-      "created_at": "2025-11-05 13:05:14.026726",
-      "updated_at": "2025-11-05 13:18:10.697165"
+      "updated_at": "2025-11-05 14:02:48.688974"
     },
     {
       "id": "3651aa57-b764-44e8-886c-6118ec943694",
@@ -53,12 +37,56 @@
       "status": "active",
       "mode": "self-hosted",
       "endpoint_url": null,
-      "model_path": "/Users/van/.cache/py_llm_hosting/models/models--BAAI--bge-reranker-v2-m3/snapshots/953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+      "model_path": "BAAI/bge-reranker-v2-m3",
       "backend_type": "reranker",
       "backend_config": {},
       "config": {},
       "created_at": "2025-11-05 13:14:29.431597",
-      "updated_at": "2025-11-05 13:16:54.788563"
+      "updated_at": "2025-11-05 14:03:56.063144"
+    },
+    {
+      "id": "521fdb17-fd65-4469-bce5-7d3499678070",
+      "name": "Qwen3 Embed MLX",
+      "model_name": "qwen3-embed",
+      "status": "active",
+      "mode": "self-hosted",
+      "endpoint_url": null,
+      "model_path": "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ",
+      "backend_type": "mlx",
+      "backend_config": {},
+      "config": {},
+      "created_at": "2025-11-05 13:26:07.130356",
+      "updated_at": "2025-11-05 14:02:59.674472"
+    },
+    {
+      "id": "210fc063-b0d7-45de-802e-fab796358e34",
+      "name": "bge-micro-v2",
+      "model_name": "bge-micro-v2",
+      "status": "active",
+      "mode": "self-hosted",
+      "endpoint_url": null,
+      "model_path": "TaylorAI/bge-micro-v2",
+      "backend_type": "sentence-transformers",
+      "backend_config": {},
+      "config": {},
+      "created_at": "2025-11-05 13:46:09.075987",
+      "updated_at": "2025-11-05 14:03:08.665417"
+    },
+    {
+      "id": "ce5d6774-4715-4f91-9bee-b5aa32381844",
+      "name": "Nomic Embed v1.5",
+      "model_name": "nomic-embed-v1.5",
+      "status": "active",
+      "mode": "self-hosted",
+      "endpoint_url": null,
+      "model_path": "zyj2003lj/nomic-embed-text-v1.5-Q4_K_M-GGUF",
+      "backend_type": "llama-cpp",
+      "backend_config": {
+        "n_gpu_layers": 0
+      },
+      "config": {},
+      "created_at": "2025-11-05 14:01:18.400117",
+      "updated_at": "2025-11-05 14:11:46.023615"
     }
   ],
   "mcp_sessions": []

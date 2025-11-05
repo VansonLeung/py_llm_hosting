@@ -255,11 +255,81 @@ class MLXBackend(ModelBackend):
         texts: List[str],
         **kwargs
     ) -> Dict[str, Any]:
-        """Generate embeddings (not directly supported by mlx-lm)."""
-        raise NotImplementedError(
-            "MLX backend does not support embeddings with mlx-lm. "
-            "Consider using a dedicated embedding model or llama.cpp backend."
-        )
+        """Generate embeddings using MLX."""
+        if not self.loaded:
+            raise RuntimeError("Model not loaded")
+        
+        try:
+            import mlx.core as mx
+            import time
+            
+            logger.info(f"Generating embeddings for {len(texts)} texts with MLX")
+            
+            # Check if model supports embeddings
+            if not (hasattr(self.model, 'model') and hasattr(self.model.model, 'embed_tokens')):
+                raise RuntimeError(
+                    "MLX model does not have embed_tokens. "
+                    "This model may not support embeddings."
+                )
+            
+            # Run embedding generation in executor
+            loop = asyncio.get_event_loop()
+            
+            def embed_sync():
+                embeddings = []
+                total_tokens = 0
+                
+                for text in texts:
+                    # Tokenize the input
+                    input_ids = self.tokenizer.encode(text)
+                    total_tokens += len(input_ids)
+                    
+                    # Convert to MLX array
+                    input_ids_mx = mx.array([input_ids])
+                    
+                    # Get token embeddings from the model
+                    token_embeddings = self.model.model.embed_tokens(input_ids_mx)
+                    
+                    # Mean pooling across sequence dimension
+                    # token_embeddings shape: (1, seq_len, hidden_dim)
+                    mean_embedding = mx.mean(token_embeddings[0], axis=0)
+                    
+                    # Normalize the embedding
+                    norm = mx.sqrt(mx.sum(mean_embedding * mean_embedding))
+                    normalized_embedding = mean_embedding / norm
+                    
+                    # Convert to list
+                    embedding_list = normalized_embedding.tolist()
+                    embeddings.append(embedding_list)
+                
+                return embeddings, total_tokens
+            
+            embeddings, total_tokens = await loop.run_in_executor(None, embed_sync)
+            
+            # Format as OpenAI-compatible response
+            data = []
+            for i, embedding in enumerate(embeddings):
+                data.append({
+                    "object": "embedding",
+                    "embedding": embedding,
+                    "index": i
+                })
+            
+            return {
+                "object": "list",
+                "data": data,
+                "model": self.model_path,
+                "usage": {
+                    "prompt_tokens": total_tokens,
+                    "total_tokens": total_tokens
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating embeddings: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise RuntimeError(f"MLX embedding generation failed: {str(e)}")
 
     async def stream_generate(
         self,
@@ -294,7 +364,8 @@ class MLXBackend(ModelBackend):
 
     def supports_capability(self, capability: ModelCapability) -> bool:
         """Check if backend supports a capability."""
-        return capability == ModelCapability.TEXT_GENERATION
+        # MLX supports both text generation and embeddings
+        return capability in [ModelCapability.TEXT_GENERATION, ModelCapability.EMBEDDINGS]
 
     async def get_info(self) -> Dict[str, Any]:
         """Get backend information."""
@@ -310,7 +381,8 @@ class MLXBackend(ModelBackend):
                 "trust_remote_code": self.trust_remote_code
             },
             "capabilities": [
-                ModelCapability.TEXT_GENERATION.value
+                ModelCapability.TEXT_GENERATION.value,
+                ModelCapability.EMBEDDINGS.value
             ],
             "platform": "Apple Silicon (M-series)"
         }

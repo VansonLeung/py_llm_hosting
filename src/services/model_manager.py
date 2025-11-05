@@ -67,6 +67,7 @@ class ModelManager:
                     "mlx": ModelBackendType.MLX,
                     "mlx-vlm": ModelBackendType.MLX_VLM,
                     "reranker": ModelBackendType.RERANKER,
+                    "sentence-transformers": ModelBackendType.SENTENCE_TRANSFORMERS,
                     "transformers": ModelBackendType.LLAMACPP,  # Use llamacpp as fallback
                 }
                 

@@ -20,20 +20,121 @@ class LlamaCppBackend(ModelBackend):
         self.n_gpu_layers = kwargs.get("n_gpu_layers", 0)
         self.n_threads = kwargs.get("n_threads", None)
         self.verbose = kwargs.get("verbose", False)
+        self.resolved_model_path = None
+
+    def _resolve_model_path(self, model_path: str) -> str:
+        """
+        Resolve model path from various formats:
+        - Local file path: /path/to/model.gguf
+        - HuggingFace model ID: owner/repo-name
+        - HuggingFace with filename: owner/repo-name:filename.gguf
+        
+        Returns the actual file path to the model.
+        """
+        import os
+        from pathlib import Path
+        
+        # If it's a local path and exists, use it directly
+        if os.path.exists(model_path):
+            logger.info(f"Using local model path: {model_path}")
+            return model_path
+        
+        # Check if it's a HuggingFace model ID (contains /)
+        if '/' in model_path and not os.path.exists(model_path):
+            logger.info(f"Detected HuggingFace model ID: {model_path}")
+            
+            # Parse model_id and optional filename
+            if ':' in model_path:
+                model_id, filename = model_path.split(':', 1)
+            else:
+                model_id = model_path
+                filename = None
+            
+            # Check HuggingFace cache first
+            cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+            model_cache_name = f"models--{model_id.replace('/', '--')}"
+            model_cache_path = cache_dir / model_cache_name
+            
+            if model_cache_path.exists():
+                logger.info(f"Found model in HuggingFace cache: {model_cache_path}")
+                
+                # Look for the model file in snapshots
+                snapshots_dir = model_cache_path / "snapshots"
+                if snapshots_dir.exists():
+                    # Get the latest snapshot
+                    snapshots = [d for d in snapshots_dir.iterdir() if d.is_dir()]
+                    if snapshots:
+                        latest_snapshot = max(snapshots, key=lambda p: p.stat().st_mtime)
+                        
+                        # If filename specified, look for it
+                        if filename:
+                            model_file = latest_snapshot / filename
+                            if model_file.exists():
+                                logger.info(f"Using cached model file: {model_file}")
+                                return str(model_file)
+                        else:
+                            # Find any .gguf file
+                            gguf_files = list(latest_snapshot.glob("*.gguf"))
+                            if gguf_files:
+                                model_file = gguf_files[0]
+                                logger.info(f"Using cached model file: {model_file}")
+                                return str(model_file)
+            
+            # Not in cache, try to download
+            logger.info(f"Model not in cache, attempting to download from HuggingFace...")
+            try:
+                from huggingface_hub import hf_hub_download, list_repo_files
+                
+                # If no filename specified, find the first .gguf file
+                if not filename:
+                    logger.info("No filename specified, searching for .gguf files...")
+                    try:
+                        files = list_repo_files(model_id)
+                        gguf_files = [f for f in files if f.endswith('.gguf')]
+                        if gguf_files:
+                            filename = gguf_files[0]
+                            logger.info(f"Found GGUF file: {filename}")
+                        else:
+                            raise RuntimeError(f"No .gguf files found in {model_id}")
+                    except Exception as e:
+                        raise RuntimeError(f"Failed to list files in {model_id}: {e}")
+                
+                # Download the model
+                logger.info(f"Downloading {filename} from {model_id}...")
+                downloaded_path = hf_hub_download(
+                    repo_id=model_id,
+                    filename=filename,
+                    cache_dir=str(cache_dir)
+                )
+                logger.info(f"Downloaded model to: {downloaded_path}")
+                return downloaded_path
+                
+            except ImportError:
+                raise RuntimeError(
+                    "huggingface_hub not installed. "
+                    "Install with: pip install huggingface-hub"
+                )
+            except Exception as e:
+                raise RuntimeError(f"Failed to download model from HuggingFace: {e}")
+        
+        # If we get here, the path doesn't exist
+        raise RuntimeError(f"Model path does not exist: {model_path}")
 
     async def load_model(self) -> None:
         """Load the model using llama-cpp-python."""
         try:
             from llama_cpp import Llama
             
-            logger.info(f"Loading model from {self.model_path} with llama.cpp...")
+            # Resolve model path (handles HuggingFace IDs, local paths, etc.)
+            self.resolved_model_path = self._resolve_model_path(self.model_path)
+            logger.info(f"Loading model from {self.resolved_model_path} with llama.cpp...")
             
             # Run in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             self.llm = await loop.run_in_executor(
                 None,
                 lambda: Llama(
-                    model_path=self.model_path,
+                    model_path=self.resolved_model_path,
                     n_ctx=self.n_ctx,
                     n_gpu_layers=self.n_gpu_layers,
                     n_threads=self.n_threads,
@@ -43,7 +144,7 @@ class LlamaCppBackend(ModelBackend):
             )
             
             self.loaded = True
-            logger.info(f"Model loaded successfully from {self.model_path}")
+            logger.info(f"Model loaded successfully from {self.resolved_model_path}")
             
         except ImportError:
             raise RuntimeError(

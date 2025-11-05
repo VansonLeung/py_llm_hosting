@@ -14,10 +14,10 @@ class ModelDownloader:
         """Initialize downloader.
         
         Args:
-            cache_dir: Directory to cache downloaded models. Defaults to ~/.cache/py_llm_hosting/models
+            cache_dir: Directory to cache downloaded models. Defaults to ~/.cache/huggingface/hub
         """
         if cache_dir is None:
-            self.cache_dir = Path.home() / ".cache" / "py_llm_hosting" / "models"
+            self.cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
         else:
             self.cache_dir = Path(cache_dir)
         
