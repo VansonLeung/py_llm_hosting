@@ -27,9 +27,9 @@ description: "Task list template for feature implementation"
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create project structure per implementation plan
-- [ ] T002 Initialize Python 3.11 project with FastAPI, Click, httpx, Pydantic, Uvicorn dependencies
-- [ ] T003 [P] Configure linting and formatting tools (ruff, black)
+- [X] T001 Create project structure per implementation plan
+- [X] T002 Initialize Python 3.11 project with FastAPI, Click, httpx, Pydantic, Uvicorn dependencies
+- [X] T003 [P] Configure linting and formatting tools (ruff, black)
 
 ---
 
@@ -39,10 +39,10 @@ description: "Task list template for feature implementation"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Setup JSON persistence layer in src/lib/persistence.py
-- [ ] T005 [P] Setup API routing and middleware structure in src/api/__init__.py
-- [ ] T006 [P] Configure error handling and logging infrastructure in src/lib/logging.py
-- [ ] T007 Setup environment configuration management in src/lib/config.py
+- [X] T004 Setup JSON persistence layer in src/lib/persistence.py
+- [X] T005 [P] Setup API routing and middleware structure in src/api/__init__.py
+- [X] T006 [P] Configure error handling and logging infrastructure in src/lib/logging.py
+- [X] T007 Setup environment configuration management in src/lib/config.py
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -56,17 +56,17 @@ description: "Task list template for feature implementation"
 
 ### Tests for User Story 1 (MANDATORY per Constitution)
 
-- [ ] T008 [P] [US1] Write contract tests for server addition in tests/contract/test_server_add.py
-- [ ] T009 [P] [US1] Write integration tests for CLI server management in tests/integration/test_cli_servers.py
-- [ ] T010 [US1] Write unit tests for server model validation in tests/unit/test_server_model.py
+- [X] T008 [P] [US1] Write contract tests for server addition in tests/contract/test_server_add.py
+- [X] T009 [P] [US1] Write integration tests for CLI server management in tests/integration/test_cli_servers.py
+- [X] T010 [US1] Write unit tests for server model validation in tests/unit/test_server_model.py
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Create LLM Server model in src/models/server.py
-- [ ] T012 [US1] Implement server persistence methods in src/lib/persistence.py
-- [ ] T013 [US1] Implement add-server CLI command in src/cli/commands.py
-- [ ] T014 [US1] Add server validation logic in src/models/server.py
-- [ ] T015 [US1] Add logging for server operations in src/lib/logging.py
+- [X] T011 [US1] Create LLM Server model in src/models/server.py
+- [X] T012 [US1] Implement server persistence methods in src/lib/persistence.py
+- [X] T013 [US1] Implement add-server CLI command in src/cli/commands.py
+- [X] T014 [US1] Add server validation logic in src/models/server.py
+- [X] T015 [US1] Add logging for server operations in src/lib/logging.py
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -103,20 +103,20 @@ description: "Task list template for feature implementation"
 
 ### Tests for User Story 3 (MANDATORY per Constitution)
 
-- [ ] T023 [P] [US3] Write contract tests for OpenAI API endpoints in tests/contract/test_openai_api.py
-- [ ] T024 [P] [US3] Write integration tests for API request proxying in tests/integration/test_api_proxy.py
-- [ ] T025 [US3] Write unit tests for response formatting in tests/unit/test_formatters.py
+- [X] T023 [P] [US3] Write contract tests for OpenAI API endpoints in tests/contract/test_openai_api.py
+- [X] T024 [P] [US3] Write integration tests for API request proxying in tests/integration/test_api_proxy.py
+- [X] T025 [US3] Write unit tests for response formatting in tests/unit/test_formatters.py
 
 ### Implementation for User Story 3
 
-- [ ] T026 [US3] Implement chat completions endpoint in src/api/chat.py
-- [ ] T027 [US3] Implement embeddings endpoint in src/api/embeddings.py
-- [ ] T028 [US3] Implement ranking endpoint in src/api/ranking.py
-- [ ] T029 [US3] Implement API request proxying to LLM servers in src/services/proxy.py
-- [ ] T030 [US3] Add API key authentication middleware in src/api/middleware.py
-- [ ] T031 [US3] Add OpenAI response formatting in src/lib/formatters.py
-- [ ] T032 [US3] Add tool/function calling support in src/services/tools.py
-- [ ] T033 [US3] Add API error handling and validation
+- [X] T026 [US3] Implement chat completions endpoint in src/api/chat.py
+- [X] T027 [US3] Implement embeddings endpoint in src/api/embeddings.py
+- [X] T028 [US3] Implement ranking endpoint in src/api/ranking.py
+- [X] T029 [US3] Implement API request proxying to LLM servers in src/services/proxy.py
+- [X] T030 [US3] Add API key authentication middleware in src/api/middleware.py
+- [X] T031 [US3] Add OpenAI response formatting in src/lib/formatters.py
+- [X] T032 [US3] Add tool/function calling support in src/services/tools.py
+- [X] T033 [US3] Add API error handling and validation
 
 **Checkpoint**: At this point, User Story 3 should be fully functional and testable independently
 
@@ -150,7 +150,7 @@ description: "Task list template for feature implementation"
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T042 [P] Documentation updates in README.md
+- [X] T042 [P] Documentation updates in README.md
 - [ ] T043 Code cleanup and refactoring
 - [ ] T044 Performance optimization across all stories
 - [ ] T045 Security hardening

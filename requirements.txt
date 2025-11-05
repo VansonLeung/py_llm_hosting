@@ -1,0 +1,40 @@
+# Core dependencies
+fastapi==0.115.0
+click==8.1.7
+httpx==0.27.2
+pydantic==2.9.2
+pydantic-settings==2.5.2
+uvicorn[standard]==0.32.0
+websockets==12.0
+
+# Testing
+pytest==8.3.3
+pytest-asyncio==0.24.0
+
+# Code quality
+ruff==0.1.6
+black==23.11.0
+
+# Shared dependencies for model hosting
+huggingface-hub==0.25.2
+tqdm==4.66.5
+pillow==10.4.0
+numpy==1.26.4
+sentencepiece==0.2.0
+
+# Model hosting backends (install based on your needs)
+# Option 1: llama-cpp-python (CPU/GPU support, GGUF models)
+llama-cpp-python==0.2.90
+
+# Option 2: Transformers + vLLM (High-performance GPU inference)
+transformers==4.45.2
+torch==2.5.1
+accelerate==1.1.1
+# vllm==0.6.3  # Uncomment for high-performance GPU inference
+
+# Option 3: MLX (Apple Silicon optimized text generation)
+# mlx==0.20.0
+# mlx-lm==0.19.3
+
+# Option 4: MLX-VLM (Vision-Language Models on Apple Silicon)
+# mlx-vlm==0.1.0
