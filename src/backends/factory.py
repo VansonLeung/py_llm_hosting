@@ -7,7 +7,7 @@ based on configuration.
 
 from typing import Optional
 from .base import LLMBackend, ModelConfig, BackendType
-from .llamacpp import LlamaCppBackend
+from .llamacpp_backend import LlamaCppBackend
 from .transformers_backend import TransformersBackend
 from ..lib.logging import logger
 

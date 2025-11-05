@@ -35,6 +35,20 @@
       "config": {},
       "created_at": "2025-11-05 11:46:03.145387",
       "updated_at": "2025-11-05 11:46:03.145547"
+    },
+    {
+      "id": "a9a08fe5-bb3e-40a7-9604-f12a7344056b",
+      "name": "qwen-mlx",
+      "model_name": "qwen2.5-0.5b",
+      "status": "inactive",
+      "mode": "self-hosted",
+      "endpoint_url": null,
+      "model_path": "mlx-community/Qwen2.5-0.5B-Instruct-4bit",
+      "backend_type": "mlx",
+      "backend_config": {},
+      "config": {},
+      "created_at": "2025-11-05 12:00:06.698239",
+      "updated_at": "2025-11-05 12:00:06.698376"
     }
   ],
   "mcp_sessions": []

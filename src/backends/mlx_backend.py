@@ -20,6 +20,9 @@ class MLXBackend(ModelBackend):
         self.tokenizer = None
         self.max_tokens_default = kwargs.get("max_tokens", 512)
         self.trust_remote_code = kwargs.get("trust_remote_code", False)
+        self.temperature = kwargs.get("temperature", 0.7)
+        self.top_p = kwargs.get("top_p", 1.0)
+        self.repetition_penalty = kwargs.get("repetition_penalty", 1.0)
 
     async def load_model(self) -> None:
         """Load the model using MLX."""
@@ -63,34 +66,75 @@ class MLXBackend(ModelBackend):
             self.loaded = False
             logger.info("Model unloaded")
 
+    def _generate(
+        self,
+        prompt: str,
+        temperature: float,
+        top_p: float,
+        max_tokens: int,
+        repetition_penalty: float,
+        **extra_kwargs  # Catch any extra kwargs
+    ):
+        """Internal generate method with proper sampler and logits processors."""
+        from mlx_lm import generate as mlx_lm_generate, sample_utils
+        
+        if extra_kwargs:
+            logger.warning(f"_generate received unexpected kwargs: {extra_kwargs}")
+        
+        logger.info(f"_generate called with: temp={temperature}, top_p={top_p}, max_tokens={max_tokens}, rep_penalty={repetition_penalty}")
+        
+        sampler = sample_utils.make_sampler(temp=temperature, top_p=top_p)
+        logits_processors = sample_utils.make_logits_processors(
+            repetition_penalty=repetition_penalty
+        )
+        
+        logger.info(f"Created sampler and logits_processors")
+        
+        # Only pass the parameters that mlx_lm_generate() expects
+        result = mlx_lm_generate(
+            model=self.model,
+            tokenizer=self.tokenizer,
+            prompt=prompt,
+            sampler=sampler,
+            logits_processors=logits_processors,
+            max_tokens=max_tokens
+            # DO NOT pass temperature, top_p, etc. as they are handled by sampler
+        )
+        
+        logger.info(f"Generated result: {result[:50] if len(result) > 50 else result}")
+        
+        return result
+
     async def generate(
         self,
         prompt: str,
         max_tokens: Optional[int] = None,
-        temperature: float = 1.0,
+        temperature: float = 0.7,
         top_p: float = 1.0,
+        repetition_penalty: float = 1.0,
         stream: bool = False,
         **kwargs
     ) -> Dict[str, Any]:
         """Generate text from prompt."""
         if not self.loaded:
             raise RuntimeError("Model not loaded")
-
-        from mlx_lm import generate
         
         max_tokens = max_tokens or self.max_tokens_default
+        temperature = temperature if temperature is not None else self.temperature
+        top_p = top_p if top_p is not None else self.top_p
+        repetition_penalty = repetition_penalty if repetition_penalty is not None else self.repetition_penalty
         
         loop = asyncio.get_event_loop()
+        
+        # Use _generate with proper parameters
         response = await loop.run_in_executor(
             None,
-            lambda: generate(
-                self.model,
-                self.tokenizer,
+            lambda: self._generate(
                 prompt=prompt,
-                max_tokens=max_tokens,
-                temp=temperature,
+                temperature=temperature,
                 top_p=top_p,
-                verbose=False
+                max_tokens=max_tokens,
+                repetition_penalty=repetition_penalty
             )
         )
         
@@ -111,15 +155,18 @@ class MLXBackend(ModelBackend):
         self,
         messages: List[Dict[str, Any]],
         max_tokens: Optional[int] = None,
-        temperature: float = 1.0,
+        temperature: float = 0.7,
+        top_p: float = 1.0,
+        repetition_penalty: float = 1.0,
         stream: bool = False,
         **kwargs
     ) -> Dict[str, Any]:
         """Generate chat completion."""
+        logger.info(f"generate_chat called with: stream={stream}, temperature={temperature}, kwargs={kwargs}")
+        
         if not self.loaded:
             raise RuntimeError("Model not loaded")
 
-        from mlx_lm import generate
         import time
         
         # Apply chat template if available
@@ -134,17 +181,48 @@ class MLXBackend(ModelBackend):
             prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
         
         max_tokens = max_tokens or self.max_tokens_default
+        temperature = temperature if temperature is not None else self.temperature
+        top_p = top_p if top_p is not None else self.top_p
+        repetition_penalty = repetition_penalty if repetition_penalty is not None else self.repetition_penalty
         
+        # Handle streaming
+        if stream:
+            async def stream_wrapper():
+                loop = asyncio.get_event_loop()
+                
+                # MLX generate function - run in executor
+                def generate_sync():
+                    return self._generate(
+                        prompt=prompt,
+                        temperature=temperature,
+                        top_p=top_p,
+                        max_tokens=max_tokens,
+                        repetition_penalty=repetition_penalty
+                    )
+                
+                full_response = await loop.run_in_executor(None, generate_sync)
+                
+                # Simulate streaming by yielding words
+                words = full_response.split()
+                for i, word in enumerate(words):
+                    if i == 0:
+                        yield word
+                    else:
+                        yield " " + word
+                    await asyncio.sleep(0.01)  # Small delay for visual effect
+            
+            return stream_wrapper()
+        
+        # Non-streaming
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(
             None,
-            lambda: generate(
-                self.model,
-                self.tokenizer,
+            lambda: self._generate(
                 prompt=prompt,
+                temperature=temperature,
+                top_p=top_p,
                 max_tokens=max_tokens,
-                temp=temperature,
-                verbose=False
+                repetition_penalty=repetition_penalty
             )
         )
         
@@ -187,16 +265,19 @@ class MLXBackend(ModelBackend):
         self,
         prompt: str,
         max_tokens: Optional[int] = None,
-        temperature: float = 1.0,
+        temperature: float = 0.7,
+        top_p: float = 1.0,
+        repetition_penalty: float = 1.0,
         **kwargs
     ) -> AsyncIterator[str]:
         """Stream generated text."""
         if not self.loaded:
             raise RuntimeError("Model not loaded")
-
-        from mlx_lm import generate
         
         max_tokens = max_tokens or self.max_tokens_default
+        temperature = temperature if temperature is not None else self.temperature
+        top_p = top_p if top_p is not None else self.top_p
+        repetition_penalty = repetition_penalty if repetition_penalty is not None else self.repetition_penalty
         
         # MLX supports streaming, but we'll implement a simple version
         # For true streaming, you'd need to use the stream parameter in generate
@@ -204,6 +285,8 @@ class MLXBackend(ModelBackend):
             prompt=prompt,
             max_tokens=max_tokens,
             temperature=temperature,
+            top_p=top_p,
+            repetition_penalty=repetition_penalty,
             stream=False,
             **kwargs
         )
@@ -221,6 +304,9 @@ class MLXBackend(ModelBackend):
             "loaded": self.loaded,
             "config": {
                 "max_tokens": self.max_tokens_default,
+                "temperature": self.temperature,
+                "top_p": self.top_p,
+                "repetition_penalty": self.repetition_penalty,
                 "trust_remote_code": self.trust_remote_code
             },
             "capabilities": [
