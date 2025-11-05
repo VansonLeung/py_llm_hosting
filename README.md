@@ -64,6 +64,43 @@ pip install mlx==0.20.0 mlx-lm==0.19.3
 pip install vllm==0.6.3
 ```
 
+## 🚀🚀🚀 Quickest Start
+
+### 1. Copy the servers.json Example
+```bash
+cp servers.json.example servers.json
+```
+
+### 2. Start the Server
+
+```bash
+python main.py start
+```
+
+### 3. List Configured Servers
+
+```bash
+python main.py list-servers
+```
+
+Output:
+```
+ID: eb75e115-8421-408b-ac16-eaa97fed0727
+Name: TinyLlama Chat
+Model: tinyllama
+Mode: self-hosted
+Backend: llama-cpp
+Status: active
+---
+```
+
+### 4. Run test requests (see Examples in EXAMPLES.md)
+
+```bash
+python examples/test_all_endpoints.py
+```
+
+
 ## 🚀 Quick Start
 
 ### 1. Download a Model
