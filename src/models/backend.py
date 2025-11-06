@@ -55,34 +55,6 @@ class ModelBackend(ABC):
         pass
 
     @abstractmethod
-    async def generate(
-        self,
-        prompt: str,
-        max_tokens: Optional[int] = None,
-        temperature: float = 1.0,
-        top_p: float = 1.0,
-        stream: bool = False,
-        tools: Optional[List[Dict[str, Any]]] = None,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """
-        Generate text from prompt.
-        
-        Args:
-            prompt: Input text prompt
-            max_tokens: Maximum tokens to generate
-            temperature: Sampling temperature
-            top_p: Nucleus sampling parameter
-            stream: Whether to stream the response
-            tools: Optional list of tools for tool-augmented generation
-            **kwargs: Backend-specific parameters
-            
-        Returns:
-            Dict containing generated text and metadata
-        """
-        pass
-
-    @abstractmethod
     async def generate_chat(
         self,
         messages: List[Dict[str, Any]],
@@ -148,39 +120,6 @@ class ModelBackend(ABC):
             Dict containing backend info, model details, etc.
         """
         pass
-
-    async def stream_generate(
-        self,
-        prompt: str,
-        max_tokens: Optional[int] = None,
-        temperature: float = 1.0,
-        tools: Optional[List[Dict[str, Any]]] = None,
-        **kwargs
-    ) -> AsyncIterator[str]:
-        """
-        Stream generated text (optional, for backends that support it).
-        
-        Args:
-            prompt: Input text prompt
-            max_tokens: Maximum tokens to generate
-            temperature: Sampling temperature
-            tools: Optional list of tools for tool-augmented generation
-            **kwargs: Backend-specific parameters
-            
-        Yields:
-            Generated text chunks
-        """
-        # Default implementation for non-streaming backends
-        result = await self.generate(
-            prompt=prompt,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            stream=False,
-            tools=tools,
-            **kwargs
-        )
-        yield result.get("text", "")
-
 
 class ModelBackendFactory:
     """Factory for creating model backend instances."""

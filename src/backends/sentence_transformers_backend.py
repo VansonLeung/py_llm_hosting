@@ -184,47 +184,5 @@ class SentenceTransformersBackend(ModelBackend):
             logger.error(error_msg)
             raise RuntimeError(error_msg)
 
-    async def stream_generate(
-        self,
-        prompt: str,
-        max_tokens: Optional[int] = None,
-        temperature: float = 0.7,
-        top_p: float = 1.0,
-        repetition_penalty: float = 1.0,
-        **kwargs
-    ) -> AsyncIterator[str]:
-        """Stream generated text (not supported for embedding models)."""
-        raise NotImplementedError(
-            "Sentence Transformers backend only supports embeddings, not text generation."
-        )
-        yield  # Make it a generator
-
-    def supports_capability(self, capability: ModelCapability) -> bool:
-        """Check if backend supports a capability."""
-        return capability == ModelCapability.EMBEDDINGS
-
-    async def get_info(self) -> Dict[str, Any]:
-        """Get backend information."""
-        info = {
-            "backend": "sentence-transformers",
-            "model_path": self.model_path,
-            "loaded": self.loaded,
-            "config": {
-                "normalize_embeddings": self.normalize_embeddings,
-                "device": self.device
-            },
-            "capabilities": [
-                ModelCapability.EMBEDDINGS.value
-            ]
-        }
-        
-        if self.loaded and self.model:
-            info["config"]["max_seq_length"] = self.model.max_seq_length
-            info["config"]["embedding_dimension"] = self.model.get_sentence_embedding_dimension()
-            info["config"]["device"] = str(self.model.device)
-        
-        return info
-
-
 # Register the backend
 ModelBackendFactory.register_backend(ModelBackendType.SENTENCE_TRANSFORMERS, SentenceTransformersBackend)

@@ -161,10 +161,6 @@ class RerankerBackend(ModelBackend):
             logger.error(error_msg)
             raise RuntimeError(error_msg)
 
-    async def generate(self, prompt: str, **kwargs) -> Dict[str, Any]:
-        """Not supported for reranker models."""
-        raise NotImplementedError("Reranker models do not support text generation")
-
     async def generate_chat(self, messages: List[Dict[str, Any]], **kwargs) -> Dict[str, Any]:
         """Not supported for reranker models."""
         raise NotImplementedError("Reranker models do not support chat")
