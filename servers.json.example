@@ -15,7 +15,7 @@
       },
       "config": {},
       "created_at": "2025-11-05 11:46:03.145387",
-      "updated_at": "2025-11-06 08:14:39.689504"
+      "updated_at": "2025-11-06 12:31:52.976771"
     },
     {
       "id": "a9a08fe5-bb3e-40a7-9604-f12a7344056b",
@@ -29,7 +29,7 @@
       "backend_config": {},
       "config": {},
       "created_at": "2025-11-05 12:00:06.698239",
-      "updated_at": "2025-11-06 08:14:45.575365"
+      "updated_at": "2025-11-06 12:31:58.766256"
     },
     {
       "id": "3651aa57-b764-44e8-886c-6118ec943694",
@@ -88,7 +88,28 @@
       },
       "config": {},
       "created_at": "2025-11-05 14:01:18.400117",
-      "updated_at": "2025-11-05 14:18:21.440230"
+      "updated_at": "2025-11-06 09:17:39.404115"
+    },
+    {
+      "id": "vllm-qwen2.5-0.5b-4bit",
+      "name": "Qwen2.5 0.5B 4bit vLLM",
+      "model_name": "qwen2.5-0.5b-vllm",
+      "status": "active",
+      "mode": "self-hosted",
+      "endpoint_url": null,
+      "model_path": "Qwen/Qwen2.5-0.5B-Instruct-AWQ",
+      "backend_type": "vllm",
+      "backend_config": {
+        "tensor_parallel_size": 1,
+        "gpu_memory_utilization": 0.9,
+        "max_model_len": 4096,
+        "dtype": "auto",
+        "trust_remote_code": false,
+        "quantization": "awq"
+      },
+      "config": {},
+      "created_at": "2025-11-06 18:30:00.000000",
+      "updated_at": "2025-11-06 18:30:00.000000"
     }
   ],
   "mcp_sessions": []
