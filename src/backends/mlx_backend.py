@@ -154,6 +154,7 @@ class MLXBackend(ModelBackend):
     async def generate_chat(
         self,
         messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
         max_tokens: Optional[int] = None,
         temperature: float = 0.7,
         top_p: float = 1.0,
@@ -161,24 +162,39 @@ class MLXBackend(ModelBackend):
         stream: bool = False,
         **kwargs
     ) -> Dict[str, Any]:
-        """Generate chat completion."""
-        logger.info(f"generate_chat called with: stream={stream}, temperature={temperature}, kwargs={kwargs}")
+        """Generate chat completion with optional tools support."""
+        logger.info(f"generate_chat called with: stream={stream}, temperature={temperature}, tools={bool(tools)}, kwargs={kwargs}")
         
         if not self.loaded:
             raise RuntimeError("Model not loaded")
 
         import time
+        import json
         
         # Apply chat template if available
         if hasattr(self.tokenizer, 'apply_chat_template'):
-            prompt = self.tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True
-            )
+            # Try to apply with tools if supported
+            try:
+                if tools:
+                    prompt = self.tokenizer.apply_chat_template(
+                        messages,
+                        tools=tools,
+                        tokenize=False,
+                        add_generation_prompt=True
+                    )
+                else:
+                    prompt = self.tokenizer.apply_chat_template(
+                        messages,
+                        tokenize=False,
+                        add_generation_prompt=True
+                    )
+            except TypeError:
+                # Fallback if tools not supported
+                logger.warning("Tokenizer doesn't support tools parameter")
+                prompt = self._format_prompt_with_tools(messages, tools)
         else:
-            # Fallback: simple concatenation
-            prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
+            # Fallback: manual formatting
+            prompt = self._format_prompt_with_tools(messages, tools)
         
         max_tokens = max_tokens or self.max_tokens_default
         temperature = temperature if temperature is not None else self.temperature
@@ -202,14 +218,24 @@ class MLXBackend(ModelBackend):
                 
                 full_response = await loop.run_in_executor(None, generate_sync)
                 
-                # Simulate streaming by yielding words
-                words = full_response.split()
-                for i, word in enumerate(words):
-                    if i == 0:
-                        yield word
-                    else:
-                        yield " " + word
-                    await asyncio.sleep(0.01)  # Small delay for visual effect
+                # Check for tool calls
+                tool_calls = self._extract_tool_calls(full_response) if tools else None
+                
+                if tool_calls:
+                    # Yield tool calls as structured data
+                    yield {
+                        "tool_calls": tool_calls,
+                        "content": None
+                    }
+                else:
+                    # Simulate streaming by yielding words
+                    words = full_response.split()
+                    for i, word in enumerate(words):
+                        if i == 0:
+                            yield word
+                        else:
+                            yield " " + word
+                        await asyncio.sleep(0.01)  # Small delay for visual effect
             
             return stream_wrapper()
         
@@ -230,6 +256,18 @@ class MLXBackend(ModelBackend):
         prompt_tokens = len(self.tokenizer.encode(prompt))
         completion_tokens = len(self.tokenizer.encode(response))
         
+        # Parse tool calls if present
+        tool_calls = self._extract_tool_calls(response) if tools else None
+        
+        # Build message content
+        message_content = {
+            "role": "assistant",
+            "content": response if not tool_calls else None
+        }
+        
+        if tool_calls:
+            message_content["tool_calls"] = tool_calls
+        
         return {
             "id": f"chatcmpl-{int(time.time())}",
             "object": "chat.completion",
@@ -237,11 +275,8 @@ class MLXBackend(ModelBackend):
             "model": self.model_path,
             "choices": [{
                 "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": response
-                },
-                "finish_reason": "stop"
+                "message": message_content,
+                "finish_reason": "tool_calls" if tool_calls else "stop"
             }],
             "usage": {
                 "prompt_tokens": prompt_tokens,
@@ -249,6 +284,95 @@ class MLXBackend(ModelBackend):
                 "total_tokens": prompt_tokens + completion_tokens
             }
         }
+    
+    def _format_prompt_with_tools(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> str:
+        """Format prompt with tools information."""
+        import json
+        
+        if not tools:
+            return "\n".join([f"{m['role']}: {m['content']}" for m in messages])
+        
+        # Format tools as a system message
+        tools_description = "You have access to the following tools:\n\n"
+        for tool in tools:
+            func = tool.get("function", {})
+            tools_description += f"- {func.get('name')}: {func.get('description')}\n"
+            if func.get('parameters'):
+                tools_description += f"  Parameters: {json.dumps(func.get('parameters'))}\n"
+        
+        tools_description += "\nTo use a tool, respond with a JSON object in this format:\n"
+        tools_description += '{"tool_calls": [{"name": "tool_name", "arguments": {...}}]}\n\n'
+        
+        # Insert tools description as system message
+        formatted_messages = [{"role": "system", "content": tools_description}] + messages
+        
+        # Apply chat template or simple formatting
+        if hasattr(self.tokenizer, 'apply_chat_template'):
+            try:
+                return self.tokenizer.apply_chat_template(
+                    formatted_messages,
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+            except:
+                pass
+        
+        return "\n".join([f"{m['role']}: {m['content']}" for m in formatted_messages])
+    
+    def _extract_tool_calls(self, text: str) -> Optional[List[Dict[str, Any]]]:
+        """Extract tool calls from generated text."""
+        import json
+        import re
+        import time
+        
+        # Try to find JSON with tool_calls
+        json_pattern = r'\{["\']tool_calls["\']\s*:\s*\[.*?\]\s*\}'
+        match = re.search(json_pattern, text, re.DOTALL)
+        
+        if match:
+            try:
+                data = json.loads(match.group(0))
+                tool_calls = data.get("tool_calls", [])
+                
+                # Convert to OpenAI format
+                formatted_calls = []
+                for i, call in enumerate(tool_calls):
+                    formatted_calls.append({
+                        "id": f"call_{int(time.time())}_{i}",
+                        "type": "function",
+                        "function": {
+                            "name": call.get("name"),
+                            "arguments": json.dumps(call.get("arguments", {}))
+                        }
+                    })
+                
+                return formatted_calls if formatted_calls else None
+            except json.JSONDecodeError:
+                pass
+        
+        # Pattern 2: XML-style tags
+        xml_pattern = r'<tool_call>(.*?)</tool_call>'
+        matches = re.findall(xml_pattern, text, re.DOTALL)
+        
+        if matches:
+            formatted_calls = []
+            for i, match_text in enumerate(matches):
+                try:
+                    call_data = json.loads(match_text)
+                    formatted_calls.append({
+                        "id": f"call_{int(time.time())}_{i}",
+                        "type": "function",
+                        "function": {
+                            "name": call_data.get("name"),
+                            "arguments": json.dumps(call_data.get("arguments", {}))
+                        }
+                    })
+                except json.JSONDecodeError:
+                    continue
+            
+            return formatted_calls if formatted_calls else None
+        
+        return None
 
     async def embed(
         self,

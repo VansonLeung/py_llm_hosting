@@ -55,12 +55,30 @@ class VLLMBackend(ModelBackend):
             logger.info(f"Model loaded successfully from {self.model_path}")
             
         except ImportError as e:
-            raise RuntimeError(
-                f"vLLM not installed. Install with: pip install vllm transformers. Error: {e}"
-            )
+            error_msg = f"vLLM backend requires vLLM library. Install with: pip install vllm transformers. Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except FileNotFoundError as e:
+            error_msg = f"Model not found at path: {self.model_path}. The model will be downloaded automatically on first use. Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except ValueError as e:
+            error_msg = f"Invalid vLLM configuration for model {self.model_path}. Check tensor_parallel_size, gpu_memory_utilization, max_model_len, and quantization settings. Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except RuntimeError as e:
+            if "CUDA" in str(e) or "GPU" in str(e):
+                error_msg = f"GPU/CUDA error while loading model {self.model_path}. Ensure CUDA is installed and GPU is available. Error: {e}"
+            elif "memory" in str(e).lower():
+                error_msg = f"Out of memory while loading model {self.model_path}. Try reducing gpu_memory_utilization (current: {self.gpu_memory_utilization}) or max_model_len (current: {self.max_model_len}). Error: {e}"
+            else:
+                error_msg = f"Runtime error loading model {self.model_path}: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
         except Exception as e:
-            logger.error(f"Failed to load model: {e}")
-            raise
+            error_msg = f"Unexpected error loading model {self.model_path} with vLLM backend. Model path: {self.model_path}, Config: tensor_parallel={self.tensor_parallel_size}, gpu_util={self.gpu_memory_utilization}, max_len={self.max_model_len}. Error type: {type(e).__name__}, Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
     async def unload_model(self) -> None:
         """Unload the model from memory."""
@@ -82,99 +100,315 @@ class VLLMBackend(ModelBackend):
     ) -> Dict[str, Any]:
         """Generate text from prompt."""
         if not self.loaded:
-            raise RuntimeError("Model not loaded")
+            error_msg = f"Model {self.model_path} is not loaded. Please start the server first."
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
-        from vllm import SamplingParams
-        
-        max_tokens = max_tokens or 512
-        
-        sampling_params = SamplingParams(
-            temperature=temperature,
-            top_p=top_p,
-            max_tokens=max_tokens,
-            **kwargs
-        )
-        
-        loop = asyncio.get_event_loop()
-        outputs = await loop.run_in_executor(
-            None,
-            lambda: self.llm.generate([prompt], sampling_params)
-        )
-        
-        output = outputs[0]
-        generated_text = output.outputs[0].text
-        
-        return {
-            "text": generated_text,
-            "usage": {
-                "prompt_tokens": len(output.prompt_token_ids),
-                "completion_tokens": len(output.outputs[0].token_ids),
-                "total_tokens": len(output.prompt_token_ids) + len(output.outputs[0].token_ids)
+        try:
+            from vllm import SamplingParams
+            
+            max_tokens = max_tokens or 512
+            
+            sampling_params = SamplingParams(
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
+                **kwargs
+            )
+            
+            loop = asyncio.get_event_loop()
+            outputs = await loop.run_in_executor(
+                None,
+                lambda: self.llm.generate([prompt], sampling_params)
+            )
+            
+            output = outputs[0]
+            generated_text = output.outputs[0].text
+            
+            return {
+                "text": generated_text,
+                "usage": {
+                    "prompt_tokens": len(output.prompt_token_ids),
+                    "completion_tokens": len(output.outputs[0].token_ids),
+                    "total_tokens": len(output.prompt_token_ids) + len(output.outputs[0].token_ids)
+                }
             }
-        }
+        except ValueError as e:
+            error_msg = f"Invalid generation parameters for model {self.model_path}. Check max_tokens ({max_tokens}), temperature ({temperature}), top_p ({top_p}). Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower() or "oom" in str(e).lower():
+                error_msg = f"Out of memory during generation with model {self.model_path}. Try reducing max_tokens (current: {max_tokens}) or batch size. Error: {e}"
+            else:
+                error_msg = f"Runtime error during generation with model {self.model_path}: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except Exception as e:
+            error_msg = f"Unexpected error during text generation with model {self.model_path}. Prompt length: {len(prompt)}, max_tokens: {max_tokens}. Error type: {type(e).__name__}, Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
     async def generate_chat(
         self,
         messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
         max_tokens: Optional[int] = None,
         temperature: float = 1.0,
         stream: bool = False,
         **kwargs
-    ) -> Dict[str, Any]:
-        """Generate chat completion."""
+    ):
+        """Generate chat completion (streaming or non-streaming) with optional tool calling support."""
         if not self.loaded:
-            raise RuntimeError("Model not loaded")
+            error_msg = f"Model {self.model_path} is not loaded. Please start the server first using: python main.py server start <server-id>"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
-        from vllm import SamplingParams
+        try:
+            from vllm import SamplingParams
+            import time
+            import json
+            import re
+            
+            # Apply chat template with tools support
+            try:
+                if self.tokenizer and hasattr(self.tokenizer, 'apply_chat_template'):
+                    # Try to apply chat template with tools
+                    try:
+                        if tools:
+                            # Some models support tools in chat template
+                            prompt = self.tokenizer.apply_chat_template(
+                                messages,
+                                tools=tools,
+                                tokenize=False,
+                                add_generation_prompt=True
+                            )
+                        else:
+                            prompt = self.tokenizer.apply_chat_template(
+                                messages,
+                                tokenize=False,
+                                add_generation_prompt=True
+                            )
+                    except TypeError:
+                        # If tokenizer doesn't support tools parameter, fall back
+                        logger.warning("Tokenizer doesn't support tools parameter, applying manual tool formatting")
+                        prompt = self._format_prompt_with_tools(messages, tools)
+                else:
+                    # Fallback: manual formatting
+                    prompt = self._format_prompt_with_tools(messages, tools)
+            except Exception as e:
+                error_msg = f"Error formatting chat prompt for model {self.model_path}. Check message format: {messages}. Error: {e}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            
+            max_tokens = max_tokens or 512
+            
+            try:
+                sampling_params = SamplingParams(
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **kwargs
+                )
+            except Exception as e:
+                error_msg = f"Invalid sampling parameters for model {self.model_path}. temperature={temperature}, max_tokens={max_tokens}, kwargs={kwargs}. Error: {e}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            
+            # Handle streaming
+            if stream:
+                async def stream_wrapper():
+                    try:
+                        loop = asyncio.get_event_loop()
+                        
+                        # vLLM's LLM.generate doesn't support streaming directly
+                        # We need to generate the full response and simulate streaming
+                        # For production use, consider using vLLM's AsyncLLMEngine instead
+                        outputs = await loop.run_in_executor(
+                            None,
+                            lambda: self.llm.generate([prompt], sampling_params)
+                        )
+                        
+                        output = outputs[0]
+                        generated_text = output.outputs[0].text
+                        
+                        # Parse tool calls if present
+                        tool_calls = self._extract_tool_calls(generated_text) if tools else None
+                        
+                        if tool_calls:
+                            # Yield tool calls as structured data
+                            yield {
+                                "tool_calls": tool_calls,
+                                "content": None
+                            }
+                        else:
+                            # Simulate streaming by yielding words/tokens
+                            # In a real implementation with AsyncLLMEngine, this would be true streaming
+                            words = generated_text.split()
+                            for i, word in enumerate(words):
+                                if i == 0:
+                                    yield word
+                                else:
+                                    yield " " + word
+                                await asyncio.sleep(0.01)  # Small delay for visual effect
+                    except Exception as e:
+                        error_msg = f"Error during streaming generation with model {self.model_path}. Error type: {type(e).__name__}, Error: {e}"
+                        logger.error(error_msg)
+                        raise RuntimeError(error_msg)
+                
+                return stream_wrapper()
+            
+            # Non-streaming
+            try:
+                loop = asyncio.get_event_loop()
+                outputs = await loop.run_in_executor(
+                    None,
+                    lambda: self.llm.generate([prompt], sampling_params)
+                )
+                
+                output = outputs[0]
+                generated_text = output.outputs[0].text
+                
+                # Parse tool calls if tools were provided
+                tool_calls = self._extract_tool_calls(generated_text) if tools else None
+                
+                # Build response
+                message_content = {
+                    "role": "assistant",
+                    "content": generated_text if not tool_calls else None
+                }
+                
+                if tool_calls:
+                    message_content["tool_calls"] = tool_calls
+                
+                return {
+                    "id": f"chatcmpl-{int(time.time())}",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": self.model_path,
+                    "choices": [{
+                        "index": 0,
+                        "message": message_content,
+                        "finish_reason": "tool_calls" if tool_calls else output.outputs[0].finish_reason
+                    }],
+                    "usage": {
+                        "prompt_tokens": len(output.prompt_token_ids),
+                        "completion_tokens": len(output.outputs[0].token_ids),
+                        "total_tokens": len(output.prompt_token_ids) + len(output.outputs[0].token_ids)
+                    }
+                }
+            except RuntimeError as e:
+                if "out of memory" in str(e).lower() or "oom" in str(e).lower():
+                    error_msg = f"Out of memory during chat generation with model {self.model_path}. Try reducing max_tokens (current: {max_tokens}) or gpu_memory_utilization (current: {self.gpu_memory_utilization}). Error: {e}"
+                else:
+                    error_msg = f"Runtime error during chat generation with model {self.model_path}: {e}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            except Exception as e:
+                error_msg = f"Unexpected error during chat generation with model {self.model_path}. Messages: {len(messages)} message(s), max_tokens: {max_tokens}, temperature: {temperature}. Error type: {type(e).__name__}, Error: {e}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+        except Exception as e:
+            # Catch any exceptions from the outer try block (prompt formatting, etc.)
+            if not isinstance(e, RuntimeError):
+                error_msg = f"Error in generate_chat for model {self.model_path}: {type(e).__name__}: {e}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            else:
+                raise
+    
+    def _format_prompt_with_tools(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> str:
+        """Format prompt with tools information."""
+        import json
+        
+        if not tools:
+            # Simple concatenation without tools
+            return "\n".join([f"{m['role']}: {m['content']}" for m in messages])
+        
+        # Format tools as a system message
+        tools_description = "You have access to the following tools:\n\n"
+        for tool in tools:
+            func = tool.get("function", {})
+            tools_description += f"- {func.get('name')}: {func.get('description')}\n"
+            if func.get('parameters'):
+                tools_description += f"  Parameters: {json.dumps(func.get('parameters'))}\n"
+        
+        tools_description += "\nTo use a tool, respond with a JSON object in this format:\n"
+        tools_description += '{"tool_calls": [{"name": "tool_name", "arguments": {...}}]}\n\n'
+        
+        # Insert tools description as system message
+        formatted_messages = [{"role": "system", "content": tools_description}] + messages
+        
+        # Apply chat template or simple formatting
+        if self.tokenizer and hasattr(self.tokenizer, 'apply_chat_template'):
+            try:
+                return self.tokenizer.apply_chat_template(
+                    formatted_messages,
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+            except:
+                pass
+        
+        # Fallback formatting
+        return "\n".join([f"{m['role']}: {m['content']}" for m in formatted_messages])
+    
+    def _extract_tool_calls(self, text: str) -> Optional[List[Dict[str, Any]]]:
+        """Extract tool calls from generated text."""
+        import json
+        import re
         import time
         
-        # Apply chat template
-        if self.tokenizer and hasattr(self.tokenizer, 'apply_chat_template'):
-            prompt = self.tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True
-            )
-        else:
-            # Fallback: simple concatenation
-            prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
+        # Try to find JSON with tool_calls
+        # Look for patterns like {"tool_calls": [...]} or <tool_call>...</tool_call>
         
-        max_tokens = max_tokens or 512
+        # Pattern 1: JSON format
+        json_pattern = r'\{["\']tool_calls["\']\s*:\s*\[.*?\]\s*\}'
+        match = re.search(json_pattern, text, re.DOTALL)
         
-        sampling_params = SamplingParams(
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **kwargs
-        )
+        if match:
+            try:
+                data = json.loads(match.group(0))
+                tool_calls = data.get("tool_calls", [])
+                
+                # Convert to OpenAI format
+                formatted_calls = []
+                for i, call in enumerate(tool_calls):
+                    formatted_calls.append({
+                        "id": f"call_{int(time.time())}_{i}",
+                        "type": "function",
+                        "function": {
+                            "name": call.get("name"),
+                            "arguments": json.dumps(call.get("arguments", {}))
+                        }
+                    })
+                
+                return formatted_calls if formatted_calls else None
+            except json.JSONDecodeError:
+                pass
         
-        loop = asyncio.get_event_loop()
-        outputs = await loop.run_in_executor(
-            None,
-            lambda: self.llm.generate([prompt], sampling_params)
-        )
+        # Pattern 2: XML-style tags
+        xml_pattern = r'<tool_call>(.*?)</tool_call>'
+        matches = re.findall(xml_pattern, text, re.DOTALL)
         
-        output = outputs[0]
-        generated_text = output.outputs[0].text
+        if matches:
+            formatted_calls = []
+            for i, match_text in enumerate(matches):
+                try:
+                    call_data = json.loads(match_text)
+                    formatted_calls.append({
+                        "id": f"call_{int(time.time())}_{i}",
+                        "type": "function",
+                        "function": {
+                            "name": call_data.get("name"),
+                            "arguments": json.dumps(call_data.get("arguments", {}))
+                        }
+                    })
+                except json.JSONDecodeError:
+                    continue
+            
+            return formatted_calls if formatted_calls else None
         
-        return {
-            "id": f"chatcmpl-{int(time.time())}",
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": self.model_path,
-            "choices": [{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": generated_text
-                },
-                "finish_reason": output.outputs[0].finish_reason
-            }],
-            "usage": {
-                "prompt_tokens": len(output.prompt_token_ids),
-                "completion_tokens": len(output.outputs[0].token_ids),
-                "total_tokens": len(output.prompt_token_ids) + len(output.outputs[0].token_ids)
-            }
-        }
+        return None
 
     async def embed(
         self,

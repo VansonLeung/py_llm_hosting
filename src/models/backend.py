@@ -84,6 +84,7 @@ class ModelBackend(ABC):
     async def generate_chat(
         self,
         messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
         max_tokens: Optional[int] = None,
         temperature: float = 1.0,
         stream: bool = False,
@@ -94,6 +95,7 @@ class ModelBackend(ABC):
         
         Args:
             messages: List of chat messages
+            tools: Optional list of tools for tool-augmented models
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature
             stream: Whether to stream the response

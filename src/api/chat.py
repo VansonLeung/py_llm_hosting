@@ -47,6 +47,7 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
     # Generate streaming response
     response_dict = await backend.generate_chat(
         messages=messages,
+        tools=request.tools,
         temperature=request.temperature,
         max_tokens=request.max_tokens,
         stream=True
@@ -55,6 +56,12 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
     # If backend returns a stream/generator
     if hasattr(response_dict, '__aiter__'):
         async for token in response_dict:
+            # Handle both string tokens and dict with tool_calls
+            if isinstance(token, dict):
+                delta = token
+            else:
+                delta = {"content": token}
+            
             chunk = {
                 "id": chunk_id,
                 "object": "chat.completion.chunk",
@@ -63,7 +70,7 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
                 "choices": [
                     {
                         "index": 0,
-                        "delta": {"content": token},
+                        "delta": delta,
                         "finish_reason": None
                     }
                 ]
@@ -136,17 +143,26 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
 async def handle_self_hosted_chat(server, request: ChatCompletionRequest):
     """Handle chat completion using self-hosted model."""
     from src.services.model_manager import model_manager
+    from src.libs.logging import logger
     
     # Load model if not already loaded
     backend = model_manager.get_backend(server.id)
     if backend is None:
-        backend = await model_manager.load_model(server)
+        try:
+            logger.info(f"Loading model {server.model_name} (backend: {server.backend_type})")
+            backend = await model_manager.load_model(server)
+        except Exception as e:
+            error_msg = f"Failed to load model '{server.model_name}' (id: {server.id}, backend: {server.backend_type}). Error: {str(e)}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
     
     # Check if backend supports chat
     if not backend.supports_capability(ModelCapability.TEXT_GENERATION):
+        error_msg = f"Backend {server.backend_type} does not support text generation"
+        logger.error(error_msg)
         raise HTTPException(
             status_code=400, 
-            detail=f"Backend {server.backend_type} does not support text generation"
+            detail=error_msg
         )
     
     # Check for multimodal content
@@ -155,9 +171,11 @@ async def handle_self_hosted_chat(server, request: ChatCompletionRequest):
     )
     
     if has_images and not backend.supports_capability(ModelCapability.VISION):
+        error_msg = f"Backend {server.backend_type} does not support vision/multimodal input"
+        logger.error(error_msg)
         raise HTTPException(
             status_code=400,
-            detail=f"Backend {server.backend_type} does not support vision"
+            detail=error_msg
         )
     
     # Handle streaming
@@ -176,6 +194,7 @@ async def handle_self_hosted_chat(server, request: ChatCompletionRequest):
     # Generate response (backends are async)
     response_dict = await backend.generate_chat(
         messages=messages,
+        tools=request.tools,
         temperature=request.temperature,
         max_tokens=request.max_tokens,
         stream=False
@@ -218,6 +237,8 @@ async def handle_self_hosted_chat(server, request: ChatCompletionRequest):
 @router.post("/chat/completions")
 async def create_chat_completion(request: ChatCompletionRequest):
     """Create a chat completion."""
+    from src.libs.logging import logger
+    
     try:
         # Find server for the model
         from src.libs.persistence import Persistence
@@ -225,17 +246,37 @@ async def create_chat_completion(request: ChatCompletionRequest):
         servers = persistence.get_servers()
         server = next((s for s in servers if s.model_name == request.model), None)
         if not server:
-            raise HTTPException(status_code=400, detail=f"Model '{request.model}' not found")
+            error_msg = f"Model '{request.model}' not found. Available models: {[s.model_name for s in servers]}"
+            logger.error(error_msg)
+            raise HTTPException(status_code=404, detail=error_msg)
 
         # Route based on server mode
         if server.mode == ServerMode.SELF_HOSTED:
-            return await handle_self_hosted_chat(server, request)
+            try:
+                return await handle_self_hosted_chat(server, request)
+            except RuntimeError as e:
+                # Backend errors - provide detailed message
+                error_msg = f"Backend error for model '{request.model}': {str(e)}"
+                logger.error(error_msg)
+                raise HTTPException(status_code=500, detail=str(e))
+            except ValueError as e:
+                # Invalid parameters
+                error_msg = f"Invalid request parameters for model '{request.model}': {str(e)}"
+                logger.error(error_msg)
+                raise HTTPException(status_code=400, detail=str(e))
         else:
             # Proxy mode
-            raw_response = await proxy_request(server.endpoint_url, request.model_dump())
-            formatted_response = format_chat_response(raw_response)
-            return formatted_response
+            try:
+                raw_response = await proxy_request(server.endpoint_url, request.model_dump())
+                formatted_response = format_chat_response(raw_response)
+                return formatted_response
+            except Exception as e:
+                error_msg = f"Proxy request failed for model '{request.model}' to endpoint '{server.endpoint_url}': {str(e)}"
+                logger.error(error_msg)
+                raise HTTPException(status_code=502, detail=f"Proxy request failed: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = f"Unexpected error in chat completion for model '{request.model}': {type(e).__name__}: {str(e)}"
+        logger.error(error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)

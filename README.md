@@ -61,7 +61,19 @@ pip install mlx==0.20.0 mlx-lm==0.19.3
 
 #### For GPU Inference (vLLM):
 ```bash
+# Install vLLM for high-performance GPU inference
+pip install vllm
+
+# For specific version
 pip install vllm==0.6.3
+
+# Note: Requires CUDA-compatible GPU and CUDA toolkit installed
+# Supports AWQ quantization for 4-bit models
+```
+
+#### For Sentence Transformers (Embeddings & Reranking):
+```bash
+pip install sentence-transformers torch
 ```
 
 ## 🚀🚀🚀 Quickest Start
@@ -480,6 +492,18 @@ python main.py add-server \
   --mode self-hosted \
   --backend mlx \
   --model-path "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
+```
+
+#### Qwen 2.5 (vLLM) - High-Performance GPU Inference
+```bash
+# vLLM automatically downloads models from HuggingFace
+python main.py add-server \
+  --name "Qwen 2.5 vLLM" \
+  --model "qwen2.5-0.5b-vllm" \
+  --mode self-hosted \
+  --backend vllm \
+  --model-path "Qwen/Qwen2.5-0.5B-Instruct-AWQ"
+# Note: AWQ quantized models are recommended for reduced memory usage
 ```
 
 ### Embedding Models

@@ -31,7 +31,8 @@ llama-cpp-python==0.2.90
 transformers==4.45.2
 torch==2.5.1
 accelerate==1.1.1
-# vllm==0.6.3  # Uncomment for high-performance GPU inference
+# vllm==0.11.0  # Uncomment for high-performance GPU inference
+# intel_extension_for_pytorch==2.8.0 # Uncomment for Intel CPU optimizations
 
 # Option 3: MLX (Apple Silicon optimized text generation)
 # mlx==0.20.0
