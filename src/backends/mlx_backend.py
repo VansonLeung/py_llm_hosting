@@ -198,7 +198,7 @@ class MLXBackend(ModelBackend):
         **kwargs
     ) -> Dict[str, Any]:
         """Generate chat completion with optional tools support."""
-        logger.info(f"generate_chat called with: stream={stream}, temperature={temperature}, tools={bool(tools)}, kwargs={kwargs}")
+        logger.info(f"generate_chat called with: stream={stream}, temperature={temperature}, tools={tools}, kwargs={kwargs}")
 
         if not self.loaded:
             error_msg = f"Model {self.model_path} is not loaded. Please start the server first."
@@ -214,6 +214,7 @@ class MLXBackend(ModelBackend):
                 # Try to apply with tools if supported
                 try:
                     if tools:
+                        logger.info("Applying chat template with tools")
                         prompt = self.tokenizer.apply_chat_template(
                             messages,
                             tools=tools,
@@ -221,6 +222,7 @@ class MLXBackend(ModelBackend):
                             add_generation_prompt=True
                         )
                     else:
+                        logger.info("Applying chat template without tools")
                         prompt = self.tokenizer.apply_chat_template(
                             messages,
                             tokenize=False,
@@ -232,6 +234,7 @@ class MLXBackend(ModelBackend):
                     prompt = self._format_prompt_with_tools(messages, tools)
             else:
                 # Fallback: manual formatting
+                logger.warning("Tokenizer has no apply_chat_template method")
                 prompt = self._format_prompt_with_tools(messages, tools)
 
             max_tokens = max_tokens or self.max_tokens_default

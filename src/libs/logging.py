@@ -1,9 +1,15 @@
 import logging
 import sys
+import os
 from typing import Optional
 
 def setup_logging(level: str = "INFO", log_file: Optional[str] = None):
     """Setup logging configuration for the application."""
+    # Get log level from environment variable if not explicitly provided
+    if level == "INFO":  # Only check env if using default
+        env_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+        level = env_level
+    
     log_level = getattr(logging, level.upper(), logging.INFO)
 
     # Create logger
@@ -28,7 +34,7 @@ def setup_logging(level: str = "INFO", log_file: Optional[str] = None):
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(log_level)
         file_formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
+            '%(asctime)s - %(name)s - %(funcName)s:%(lineno)d - %(message)s'
         )
         file_handler.setFormatter(file_formatter)
         logger.addHandler(file_handler)

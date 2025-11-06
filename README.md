@@ -96,6 +96,7 @@ nano .env
 
 The `.env` file supports:
 - `PORT`: Server port (default: 8000)
+- `LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR) (default: INFO)
 
 **Note**: Test scripts in the `examples/` folder also respect the `PORT` environment variable and can be overridden with `--port` flag.
 
@@ -245,7 +246,7 @@ Total: 8/8 tests passed
 ```bash
 # Download a small chat model (GGUF format)
 python main.py download-model \
-  --repo TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF \
+  --model-id TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF \
   --filename tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
 ```
 
@@ -430,7 +431,7 @@ python main.py start
 
 ```bash
 # Download a model from HuggingFace
-python main.py download-model --repo <repo-id> --filename <filename>
+python main.py download-model --model-id <model-id> --filename <filename>
 
 # List loaded models
 python main.py list-loaded
@@ -472,7 +473,7 @@ python main.py add-server \
 ```bash
 # Download
 python main.py download-model \
-  --repo TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF \
+  --model-id TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF \
   --filename tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
 
 # Add server
@@ -512,7 +513,7 @@ python main.py add-server \
 ```bash
 # Download
 python main.py download-model \
-  --repo nomic-ai/nomic-embed-text-v1.5-GGUF \
+  --model-id nomic-ai/nomic-embed-text-v1.5-GGUF \
   --filename nomic-embed-text-v1.5.Q4_K_M.gguf
 
 # Add server
@@ -530,7 +531,7 @@ python main.py add-server \
 ```bash
 # Download
 python main.py download-model \
-  --repo BAAI/bge-reranker-v2-m3
+  --model-id BAAI/bge-reranker-v2-m3
 
 # Add server
 python main.py add-server \
@@ -651,8 +652,7 @@ Create a `.env` file in the project root to configure the server:
 PORT=8000                    # Server port (default: 8000)
 
 # Optional: Logging and data configuration
-export LLM_LOG_LEVEL=INFO           # Logging level (DEBUG, INFO, WARNING, ERROR)
-export LLM_DATA_FILE=servers.json   # Path to data file
+LOG_LEVEL=INFO               # Logging level (DEBUG, INFO, WARNING, ERROR)
 ```
 
 **Note**: The `PORT` environment variable is automatically loaded from `.env` and used by both the server and test scripts. Test scripts can override this with the `--port` flag.
