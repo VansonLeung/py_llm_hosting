@@ -122,14 +122,21 @@ def remove_server(ctx, id):
         click.echo(f"Error: {e}", err=True)
         raise click.Abort()
 
+def get_default_port():
+    """Get default port from environment or return 8000."""
+    port_str = os.environ.get('PORT', '8000')
+    return int(port_str)
+
 @cli.command()
-@click.option('--port', default=lambda: int(os.environ.get('PORT', 8000)), help='Port to run the API server on')
+@click.option('--port', default=get_default_port, help='Port to run the API server on')
 @click.option('--host', default='0.0.0.0', help='Host to bind the API server to')
 @click.pass_context
 def start(ctx, port, host):
     """Start the API server"""
     import uvicorn
     from src.api import app
+    # Ensure port is an integer
+    port = int(port)
     logger.info(f"Starting API server on {host}:{port}")
     uvicorn.run(app, host=host, port=port)
 
