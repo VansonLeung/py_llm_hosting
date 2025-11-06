@@ -15,21 +15,21 @@
       },
       "config": {},
       "created_at": "2025-11-05 11:46:03.145387",
-      "updated_at": "2025-11-06 12:31:52.976771"
+      "updated_at": "2025-11-06 13:22:11.075004"
     },
     {
       "id": "a9a08fe5-bb3e-40a7-9604-f12a7344056b",
       "name": "qwen-mlx",
-      "model_name": "qwen2.5-0.5b",
+      "model_name": "Qwen3-4B-Thinking-2507-MLX-4bit",
       "status": "active",
       "mode": "self-hosted",
       "endpoint_url": null,
-      "model_path": "mlx-community/Qwen2.5-0.5B-Instruct-4bit",
+      "model_path": "lmstudio-community/Qwen3-4B-Thinking-2507-MLX-4bit",
       "backend_type": "mlx",
       "backend_config": {},
       "config": {},
       "created_at": "2025-11-05 12:00:06.698239",
-      "updated_at": "2025-11-06 12:31:58.766256"
+      "updated_at": "2025-11-06 13:23:17.628593"
     },
     {
       "id": "3651aa57-b764-44e8-886c-6118ec943694",

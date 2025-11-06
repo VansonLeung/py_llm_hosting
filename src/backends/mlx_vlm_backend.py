@@ -87,9 +87,12 @@ class MLXVLMBackend(ModelBackend):
         prompt: str,
         max_tokens: Optional[int] = None,
         temperature: float = 1.0,
+        top_p: float = 1.0,
+        stream: bool = False,
+        tools: Optional[List[Dict[str, Any]]] = None,
         **kwargs
     ) -> Dict[str, Any]:
-        """Generate text from prompt."""
+        """Generate text from prompt with optional tools support."""
         if not self.loaded:
             error_msg = (
                 "Model not loaded. Call load_model() first. "
@@ -135,15 +138,40 @@ class MLXVLMBackend(ModelBackend):
 
         max_tokens = max_tokens or self.max_tokens_default
 
+        # If tools are provided, format the prompt with tool information
+        if tools:
+            logger.debug(f"Tools provided for MLX-VLM generation ({len(tools)} tools), formatting prompt")
+            # Convert tools to a simple prompt format for basic generation
+            tools_description = "You have access to the following tools:\n\n"
+            for i, tool in enumerate(tools):
+                func = tool.get("function", {})
+                tool_name = func.get('name', f'tool_{i}')
+                tool_desc = func.get('description', 'No description')
+                logger.debug(f"Adding tool {i+1}: {tool_name} - {tool_desc}")
+                tools_description += f"- {tool_name}: {tool_desc}\n"
+                if func.get('parameters'):
+                    import json
+                    tools_description += f"  Parameters: {json.dumps(func.get('parameters'))}\n"
+            
+            tools_description += "\nTo use a tool, respond with a JSON object in this format:\n"
+            tools_description += '{"tool_calls": [{"name": "tool_name", "arguments": {...}}]}\n\n'
+            
+            # Prepend tools description to prompt
+            enhanced_prompt = tools_description + prompt
+            logger.debug(f"Enhanced MLX-VLM prompt length: {len(enhanced_prompt)} (original: {len(prompt)})")
+        else:
+            enhanced_prompt = prompt
+            logger.debug("No tools provided for MLX-VLM generation")
+
         try:
-            logger.debug(f"Generating text with prompt length: {len(prompt)}, max_tokens: {max_tokens}")
+            logger.debug(f"Generating text with prompt length: {len(enhanced_prompt)}, max_tokens: {max_tokens}")
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,
                 lambda: vlm_generate(
                     self.model,
                     self.processor,
-                    prompt,
+                    enhanced_prompt,
                     max_tokens=max_tokens,
                     temp=temperature,
                     verbose=False
@@ -151,14 +179,25 @@ class MLXVLMBackend(ModelBackend):
             )
 
             usage = {
-                "prompt_tokens": len(prompt.split()),
+                "prompt_tokens": len(enhanced_prompt.split()),
                 "completion_tokens": len(response.split()),
-                "total_tokens": len(prompt.split()) + len(response.split())
+                "total_tokens": len(enhanced_prompt.split()) + len(response.split())
             }
+
+            # If tools were provided, check for tool calls in the response
+            tool_calls = None
+            if tools:
+                logger.debug(f"Checking for tool calls in MLX-VLM response (length: {len(response)})")
+                tool_calls = self._extract_tool_calls(response)
+                if tool_calls:
+                    logger.debug(f"Extracted {len(tool_calls)} tool calls from MLX-VLM response")
+                else:
+                    logger.debug("No tool calls found in MLX-VLM response")
 
             logger.debug(f"Generation completed. Usage: {usage}")
             return {
                 "text": response,
+                "tool_calls": tool_calls,
                 "usage": usage
             }
 
@@ -166,7 +205,7 @@ class MLXVLMBackend(ModelBackend):
             error_msg = (
                 f"Generation failed due to runtime error. "
                 f"This may be due to insufficient memory or model incompatibility. "
-                f"Prompt length: {len(prompt)}, max_tokens: {max_tokens}, temperature: {temperature}. "
+                f"Prompt length: {len(enhanced_prompt)}, max_tokens: {max_tokens}, temperature: {temperature}. "
                 f"Error: {e}"
             )
             logger.error(error_msg)
@@ -175,7 +214,7 @@ class MLXVLMBackend(ModelBackend):
             error_msg = (
                 f"Unexpected error during generation. "
                 f"Error type: {type(e).__name__}, Error: {e}. "
-                f"Model: {self.model_path}, Prompt length: {len(prompt)}"
+                f"Model: {self.model_path}, Prompt length: {len(enhanced_prompt)}"
             )
             logger.error(error_msg)
             raise RuntimeError(error_msg)

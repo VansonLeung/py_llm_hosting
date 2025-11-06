@@ -62,6 +62,7 @@ class ModelBackend(ABC):
         temperature: float = 1.0,
         top_p: float = 1.0,
         stream: bool = False,
+        tools: Optional[List[Dict[str, Any]]] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -73,6 +74,7 @@ class ModelBackend(ABC):
             temperature: Sampling temperature
             top_p: Nucleus sampling parameter
             stream: Whether to stream the response
+            tools: Optional list of tools for tool-augmented generation
             **kwargs: Backend-specific parameters
             
         Returns:
@@ -152,6 +154,7 @@ class ModelBackend(ABC):
         prompt: str,
         max_tokens: Optional[int] = None,
         temperature: float = 1.0,
+        tools: Optional[List[Dict[str, Any]]] = None,
         **kwargs
     ) -> AsyncIterator[str]:
         """
@@ -161,6 +164,7 @@ class ModelBackend(ABC):
             prompt: Input text prompt
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature
+            tools: Optional list of tools for tool-augmented generation
             **kwargs: Backend-specific parameters
             
         Yields:
@@ -172,6 +176,7 @@ class ModelBackend(ABC):
             max_tokens=max_tokens,
             temperature=temperature,
             stream=False,
+            tools=tools,
             **kwargs
         )
         yield result.get("text", "")

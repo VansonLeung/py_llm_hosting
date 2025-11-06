@@ -233,9 +233,10 @@ class LlamaCppBackend(ModelBackend):
         temperature: float = 1.0,
         top_p: float = 1.0,
         stream: bool = False,
+        tools: Optional[List[Dict[str, Any]]] = None,
         **kwargs
     ) -> Dict[str, Any]:
-        """Generate text from prompt."""
+        """Generate text from prompt with optional tools support."""
         if not self.loaded:
             error_msg = f"Model {self.model_path} is not loaded. Please start the server first."
             logger.error(error_msg)
@@ -244,11 +245,36 @@ class LlamaCppBackend(ModelBackend):
         try:
             max_tokens = max_tokens or 512
 
+            # If tools are provided, format the prompt with tool information
+            if tools:
+                logger.debug(f"Tools provided for basic generation ({len(tools)} tools), formatting prompt")
+                # Convert tools to a simple prompt format for basic generation
+                tools_description = "You have access to the following tools:\n\n"
+                for i, tool in enumerate(tools):
+                    func = tool.get("function", {})
+                    tool_name = func.get('name', f'tool_{i}')
+                    tool_desc = func.get('description', 'No description')
+                    logger.debug(f"Adding tool {i+1}: {tool_name} - {tool_desc}")
+                    tools_description += f"- {tool_name}: {tool_desc}\n"
+                    if func.get('parameters'):
+                        import json
+                        tools_description += f"  Parameters: {json.dumps(func.get('parameters'))}\n"
+                
+                tools_description += "\nTo use a tool, respond with a JSON object in this format:\n"
+                tools_description += '{"tool_calls": [{"name": "tool_name", "arguments": {...}}]}\n\n'
+                
+                # Prepend tools description to prompt
+                enhanced_prompt = tools_description + prompt
+                logger.debug(f"Enhanced prompt length: {len(enhanced_prompt)} (original: {len(prompt)})")
+            else:
+                enhanced_prompt = prompt
+                logger.debug("No tools provided for basic generation")
+
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None,
                 lambda: self.llm(
-                    prompt,
+                    enhanced_prompt,
                     max_tokens=max_tokens,
                     temperature=temperature,
                     top_p=top_p,
@@ -258,8 +284,21 @@ class LlamaCppBackend(ModelBackend):
                 )
             )
 
+            response_text = result["choices"][0]["text"]
+            
+            # If tools were provided, check for tool calls in the response
+            tool_calls = None
+            if tools:
+                logger.debug(f"Checking for tool calls in basic generation response (length: {len(response_text)})")
+                tool_calls = self._extract_tool_calls(response_text)
+                if tool_calls:
+                    logger.debug(f"Extracted {len(tool_calls)} tool calls from basic generation response")
+                else:
+                    logger.debug("No tool calls found in basic generation response")
+
             return {
-                "text": result["choices"][0]["text"],
+                "text": response_text,
+                "tool_calls": tool_calls,
                 "usage": {
                     "prompt_tokens": result["usage"]["prompt_tokens"],
                     "completion_tokens": result["usage"]["completion_tokens"],
@@ -614,17 +653,43 @@ class LlamaCppBackend(ModelBackend):
         prompt: str,
         max_tokens: Optional[int] = None,
         temperature: float = 1.0,
+        tools: Optional[List[Dict[str, Any]]] = None,
         **kwargs
     ) -> AsyncIterator[str]:
-        """Stream generated text."""
+        """Stream generated text with optional tools support."""
         if not self.loaded:
             raise RuntimeError("Model not loaded")
 
         max_tokens = max_tokens or 512
         
+        # If tools are provided, format the prompt with tool information
+        if tools:
+            logger.debug(f"Tools provided for streaming generation ({len(tools)} tools), formatting prompt")
+            # Convert tools to a simple prompt format for basic generation
+            tools_description = "You have access to the following tools:\n\n"
+            for i, tool in enumerate(tools):
+                func = tools[i].get("function", {})
+                tool_name = func.get('name', f'tool_{i}')
+                tool_desc = func.get('description', 'No description')
+                logger.debug(f"Adding tool {i+1}: {tool_name} - {tool_desc}")
+                tools_description += f"- {tool_name}: {tool_desc}\n"
+                if func.get('parameters'):
+                    import json
+                    tools_description += f"  Parameters: {json.dumps(func.get('parameters'))}\n"
+            
+            tools_description += "\nTo use a tool, respond with a JSON object in this format:\n"
+            tools_description += '{"tool_calls": [{"name": "tool_name", "arguments": {...}}]}\n\n'
+            
+            # Prepend tools description to prompt
+            enhanced_prompt = tools_description + prompt
+            logger.debug(f"Enhanced streaming prompt length: {len(enhanced_prompt)} (original: {len(prompt)})")
+        else:
+            enhanced_prompt = prompt
+            logger.debug("No tools provided for streaming generation")
+        
         # Create streaming generator in thread
         for chunk in self.llm(
-            prompt,
+            enhanced_prompt,
             max_tokens=max_tokens,
             temperature=temperature,
             stream=True,

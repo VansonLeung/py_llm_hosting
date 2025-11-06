@@ -130,27 +130,52 @@ class MLXBackend(ModelBackend):
         top_p: float = 1.0,
         repetition_penalty: float = 1.0,
         stream: bool = False,
+        tools: Optional[List[Dict[str, Any]]] = None,
         **kwargs
     ) -> Dict[str, Any]:
-        """Generate text from prompt."""
+        """Generate text using MLX with optional tools support."""
         if not self.loaded:
             error_msg = f"Model {self.model_path} is not loaded. Please start the server first."
             logger.error(error_msg)
             raise RuntimeError(error_msg)
 
         try:
+            # If tools are provided, format the prompt with tool information
+            if tools:
+                logger.info(f"Tools provided for MLX generation ({len(tools)} tools), formatting prompt")
+                # Convert tools to a simple prompt format for basic generation
+                tools_description = "You have access to the following tools:\n\n"
+                for i, tool in enumerate(tools):
+                    func = tool.get("function", {})
+                    tool_name = func.get('name', f'tool_{i}')
+                    tool_desc = func.get('description', 'No description')
+                    logger.info(f"Adding tool {i+1}: {tool_name} - {tool_desc}")
+                    tools_description += f"- {tool_name}: {tool_desc}\n"
+                    if func.get('parameters'):
+                        import json
+                        tools_description += f"  Parameters: {json.dumps(func.get('parameters'))}\n"
+                
+                tools_description += "\nTo use a tool, respond with a JSON object in this format:\n"
+                tools_description += '{"tool_calls": [{"name": "tool_name", "arguments": {...}}]}\n\n'
+                
+                # Prepend tools description to prompt
+                enhanced_prompt = tools_description + prompt
+                logger.info(f"Enhanced MLX prompt length: {len(enhanced_prompt)} (original: {len(prompt)})")
+            else:
+                enhanced_prompt = prompt
+                logger.info("No tools provided for MLX generation")
+
             max_tokens = max_tokens or self.max_tokens_default
             temperature = temperature if temperature is not None else self.temperature
             top_p = top_p if top_p is not None else self.top_p
             repetition_penalty = repetition_penalty if repetition_penalty is not None else self.repetition_penalty
 
+            # Run generation in executor
             loop = asyncio.get_event_loop()
-
-            # Use _generate with proper parameters
             response = await loop.run_in_executor(
                 None,
                 lambda: self._generate(
-                    prompt=prompt,
+                    prompt=enhanced_prompt,
                     temperature=temperature,
                     top_p=top_p,
                     max_tokens=max_tokens,
@@ -158,12 +183,23 @@ class MLXBackend(ModelBackend):
                 )
             )
 
-            # Count tokens (approximate)
-            prompt_tokens = len(self.tokenizer.encode(prompt))
+            # Count tokens
+            prompt_tokens = len(self.tokenizer.encode(enhanced_prompt))
             completion_tokens = len(self.tokenizer.encode(response))
+
+            # If tools were provided, check for tool calls in the response
+            tool_calls = None
+            if tools:
+                logger.info(f"Checking for tool calls in MLX response (length: {len(response)})")
+                tool_calls = self._extract_tool_calls(response)
+                if tool_calls:
+                    logger.info(f"Extracted {len(tool_calls)} tool calls from MLX response")
+                else:
+                    logger.info("No tool calls found in MLX response")
 
             return {
                 "text": response,
+                "tool_calls": tool_calls,
                 "usage": {
                     "prompt_tokens": prompt_tokens,
                     "completion_tokens": completion_tokens,
@@ -182,7 +218,7 @@ class MLXBackend(ModelBackend):
             logger.error(error_msg)
             raise RuntimeError(error_msg)
         except Exception as e:
-            error_msg = f"Unexpected error during text generation with model {self.model_path}. Prompt length: {len(prompt)}, max_tokens: {max_tokens}. Error type: {type(e).__name__}, Error: {e}"
+            error_msg = f"Unexpected error during generation with model {self.model_path}. Prompt length: {len(prompt)}, max_tokens: {max_tokens}, temperature: {temperature}. Error type: {type(e).__name__}, Error: {e}"
             logger.error(error_msg)
             raise RuntimeError(error_msg)
 
@@ -534,11 +570,37 @@ class MLXBackend(ModelBackend):
         temperature: float = 0.7,
         top_p: float = 1.0,
         repetition_penalty: float = 1.0,
+        tools: Optional[List[Dict[str, Any]]] = None,
         **kwargs
     ) -> AsyncIterator[str]:
-        """Stream generated text."""
+        """Stream generated text with optional tools support."""
         if not self.loaded:
             raise RuntimeError("Model not loaded")
+        
+        # If tools are provided, format the prompt with tool information
+        if tools:
+            logger.info(f"Tools provided for MLX streaming ({len(tools)} tools), formatting prompt")
+            # Convert tools to a simple prompt format for basic generation
+            tools_description = "You have access to the following tools:\n\n"
+            for i, tool in enumerate(tools):
+                func = tools[i].get("function", {})
+                tool_name = func.get('name', f'tool_{i}')
+                tool_desc = func.get('description', 'No description')
+                logger.info(f"Adding tool {i+1}: {tool_name} - {tool_desc}")
+                tools_description += f"- {tool_name}: {tool_desc}\n"
+                if func.get('parameters'):
+                    import json
+                    tools_description += f"  Parameters: {json.dumps(func.get('parameters'))}\n"
+            
+            tools_description += "\nTo use a tool, respond with a JSON object in this format:\n"
+            tools_description += '{"tool_calls": [{"name": "tool_name", "arguments": {...}}]}\n\n'
+            
+            # Prepend tools description to prompt
+            enhanced_prompt = tools_description + prompt
+            logger.info(f"Enhanced MLX streaming prompt length: {len(enhanced_prompt)} (original: {len(prompt)})")
+        else:
+            enhanced_prompt = prompt
+            logger.info("No tools provided for MLX streaming")
         
         max_tokens = max_tokens or self.max_tokens_default
         temperature = temperature if temperature is not None else self.temperature
@@ -548,12 +610,13 @@ class MLXBackend(ModelBackend):
         # MLX supports streaming, but we'll implement a simple version
         # For true streaming, you'd need to use the stream parameter in generate
         result = await self.generate(
-            prompt=prompt,
+            prompt=enhanced_prompt,
             max_tokens=max_tokens,
             temperature=temperature,
             top_p=top_p,
             repetition_penalty=repetition_penalty,
             stream=False,
+            tools=None,  # Already handled above
             **kwargs
         )
         yield result["text"]
