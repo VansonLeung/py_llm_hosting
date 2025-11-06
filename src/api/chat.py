@@ -58,12 +58,35 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
     logger.info(f"Backend response type: {type(response_dict)}")
     logger.info(f"Backend response content: {response_dict}")
     
+    thinking_sent = False
+    finish_reason = "stop"
+    
     # If backend returns a stream/generator
     if hasattr(response_dict, '__aiter__'):
         async for token in response_dict:
-            # Handle both string tokens and dict with tool_calls
+            # Handle both string tokens and dict with tool_calls/thinking
+            logger.info(f"Streaming token: {token}")
+            
             if isinstance(token, dict):
-                delta = token
+                delta = {}
+                
+                # Handle tool calls in streaming
+                if "tool_calls" in token:
+                    delta["tool_calls"] = token["tool_calls"]
+                    finish_reason = "tool_calls"
+                
+                # Handle thinking content in streaming
+                if "thinking" in token and not thinking_sent:
+                    delta["thinking"] = token["thinking"]
+                    thinking_sent = True
+                
+                # Handle regular content
+                if "content" in token:
+                    delta["content"] = token["content"]
+                
+                # If nothing specific, use the whole dict
+                if not delta:
+                    delta = token
             else:
                 delta = {"content": token}
             
@@ -84,6 +107,8 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
     
     # If backend returns dict with 'stream' generator
     elif isinstance(response_dict, dict) and "stream" in response_dict:
+        logger.info("Backend returned 'stream' in response dict")
+        logger.info(f"Response dict content: {response_dict}")
         stream_iter = response_dict["stream"]
         async for token in stream_iter:
             chunk = {
@@ -105,27 +130,104 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
     else:
         if isinstance(response_dict, dict) and "choices" in response_dict:
             # Extract content from OpenAI format
-            content = response_dict["choices"][0]["message"]["content"]
+            message = response_dict["choices"][0]["message"]
+            content = message.get("content", "")
+            tool_calls = message.get("tool_calls")
+            thinking = message.get("thinking")
+
+            logger.info("Backend returned full OpenAI response dict")
+            logger.info(f"Extracted content length: {len(content) if content else 0}")
+            logger.info(f"Extracted tool_calls: {tool_calls}")
+            logger.info(f"Extracted thinking: {thinking}")
+            
+            # Send thinking first if present
+            if thinking:
+                chunk = {
+                    "id": chunk_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": request.model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"thinking": thinking},
+                            "finish_reason": None
+                        }
+                    ]
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
+            
+            # Send tool calls if present
+            if tool_calls:
+                chunk = {
+                    "id": chunk_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": request.model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"tool_calls": tool_calls},
+                            "finish_reason": None
+                        }
+                    ]
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
+            
+            # Send content if present
+            if content:
+                chunk = {
+                    "id": chunk_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": request.model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": content},
+                            "finish_reason": None
+                        }
+                    ]
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
         elif isinstance(response_dict, dict):
             content = response_dict.get("text", "")
+            
+            # Send as single chunk
+            chunk = {
+                "id": chunk_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": request.model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": content},
+                        "finish_reason": None
+                    }
+                ]
+            }
+            yield f"data: {json.dumps(chunk)}\n\n"
         else:
             content = str(response_dict)
-        
-        # Send as single chunk
-        chunk = {
-            "id": chunk_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": request.model,
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {"content": content},
-                    "finish_reason": None
-                }
-            ]
-        }
-        yield f"data: {json.dumps(chunk)}\n\n"
+            
+            # Send as single chunk
+            chunk = {
+                "id": chunk_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": request.model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": content},
+                        "finish_reason": None
+                    }
+                ]
+            }
+            yield f"data: {json.dumps(chunk)}\n\n"
+            
+    logger.info("Streaming chat completion finished")
     
     # Send final chunk with finish_reason
     final_chunk = {
@@ -137,7 +239,7 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
             {
                 "index": 0,
                 "delta": {},
-                "finish_reason": "stop"
+                "finish_reason": finish_reason
             }
         ]
     }
@@ -209,13 +311,15 @@ async def handle_self_hosted_chat(server, request: ChatCompletionRequest):
     if isinstance(response_dict, dict):
         # If backend returns full OpenAI response, use it directly
         if "choices" in response_dict:
+            # Backend already formatted the response properly
+            # This includes tool_calls and thinking content if present
             return response_dict
-        # If backend returns just text
+        # If backend returns just text (legacy format)
         response_text = response_dict.get("text", "")
     else:
         response_text = str(response_dict)
     
-    # Format response in OpenAI format
+    # Format response in OpenAI format (legacy fallback)
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
         "object": "chat.completion",
