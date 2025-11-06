@@ -78,7 +78,7 @@ def stream_chat(prompt: str, model: str = "qwen2.5-0.5b"):
 
 def non_stream_chat(prompt: str, model: str = "tinyllama"):
     """Send a non-streaming chat completion."""
-    url = "http://localhost:8000/v1/chat/completions"
+    url = f"{BASE_URL}/chat/completions"
     
     payload = {
         "model": model,
