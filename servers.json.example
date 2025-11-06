@@ -117,7 +117,7 @@
       "model_path": "unsloth/Qwen3-4B-Instruct-2507-unsloth-bnb-4bit",
       "backend_type": "vllm",
       "backend_config": {
-        "tensor_parallel_size": 1,
+        "tensor_parallel_size": 2,
         "gpu_memory_utilization": 0.9,
         "max_model_len": 4096,
         "dtype": "auto",
