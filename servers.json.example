@@ -10,11 +10,12 @@
       "model_path": "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
       "backend_type": "llama-cpp",
       "backend_config": {
-        "n_gpu_layers": 0
+        "n_gpu_layers": 0,
+        "embedding": false
       },
       "config": {},
       "created_at": "2025-11-05 11:46:03.145387",
-      "updated_at": "2025-11-05 12:59:53.467806"
+      "updated_at": "2025-11-06 08:14:39.689504"
     },
     {
       "id": "a9a08fe5-bb3e-40a7-9604-f12a7344056b",
@@ -28,7 +29,7 @@
       "backend_config": {},
       "config": {},
       "created_at": "2025-11-05 12:00:06.698239",
-      "updated_at": "2025-11-05 14:02:48.688974"
+      "updated_at": "2025-11-06 08:14:45.575365"
     },
     {
       "id": "3651aa57-b764-44e8-886c-6118ec943694",
@@ -42,7 +43,7 @@
       "backend_config": {},
       "config": {},
       "created_at": "2025-11-05 13:14:29.431597",
-      "updated_at": "2025-11-05 14:03:56.063144"
+      "updated_at": "2025-11-05 14:18:57.055726"
     },
     {
       "id": "521fdb17-fd65-4469-bce5-7d3499678070",
@@ -56,7 +57,7 @@
       "backend_config": {},
       "config": {},
       "created_at": "2025-11-05 13:26:07.130356",
-      "updated_at": "2025-11-05 14:02:59.674472"
+      "updated_at": "2025-11-05 14:18:22.920903"
     },
     {
       "id": "210fc063-b0d7-45de-802e-fab796358e34",
@@ -70,7 +71,7 @@
       "backend_config": {},
       "config": {},
       "created_at": "2025-11-05 13:46:09.075987",
-      "updated_at": "2025-11-05 14:03:08.665417"
+      "updated_at": "2025-11-05 14:18:30.640074"
     },
     {
       "id": "ce5d6774-4715-4f91-9bee-b5aa32381844",
@@ -82,11 +83,12 @@
       "model_path": "zyj2003lj/nomic-embed-text-v1.5-Q4_K_M-GGUF",
       "backend_type": "llama-cpp",
       "backend_config": {
-        "n_gpu_layers": 0
+        "n_gpu_layers": 0,
+        "embedding": true
       },
       "config": {},
       "created_at": "2025-11-05 14:01:18.400117",
-      "updated_at": "2025-11-05 14:11:46.023615"
+      "updated_at": "2025-11-05 14:18:21.440230"
     }
   ],
   "mcp_sessions": []

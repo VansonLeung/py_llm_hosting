@@ -20,6 +20,7 @@ class LlamaCppBackend(ModelBackend):
         self.n_gpu_layers = kwargs.get("n_gpu_layers", 0)
         self.n_threads = kwargs.get("n_threads", None)
         self.verbose = kwargs.get("verbose", False)
+        self.embedding = kwargs.get("embedding", True)  # Enable embeddings by default
         self.resolved_model_path = None
 
     def _resolve_model_path(self, model_path: str) -> str:
@@ -139,7 +140,7 @@ class LlamaCppBackend(ModelBackend):
                     n_gpu_layers=self.n_gpu_layers,
                     n_threads=self.n_threads,
                     verbose=self.verbose,
-                    embedding=True  # Enable embeddings
+                    embedding=self.embedding  # Use configurable embedding setting
                 )
             )
             
@@ -337,7 +338,8 @@ class LlamaCppBackend(ModelBackend):
             "config": {
                 "n_ctx": self.n_ctx,
                 "n_gpu_layers": self.n_gpu_layers,
-                "n_threads": self.n_threads
+                "n_threads": self.n_threads,
+                "embedding": self.embedding
             },
             "capabilities": [
                 ModelCapability.TEXT_GENERATION.value,
