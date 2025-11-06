@@ -23,6 +23,7 @@ class MLXBackend(ModelBackend):
         self.temperature = kwargs.get("temperature", 0.7)
         self.top_p = kwargs.get("top_p", 1.0)
         self.repetition_penalty = kwargs.get("repetition_penalty", 1.0)
+        self.is_thinking_model = kwargs.get("is_thinking_model", False)
 
     async def load_model(self) -> None:
         """Load the model using MLX."""
@@ -118,7 +119,7 @@ class MLXBackend(ModelBackend):
             # DO NOT pass temperature, top_p, etc. as they are handled by sampler
         )
         
-        logger.info(f"Generated result: {result[:50] if len(result) > 50 else result}")
+        logger.info(f"Generated result: {f"{result[:50]}..." if len(result) > 50 else result}")
         
         return result
 
@@ -140,26 +141,12 @@ class MLXBackend(ModelBackend):
             raise RuntimeError(error_msg)
 
         try:
-            # If tools are provided, format the prompt with tool information
+            # Format prompt with tools if provided
             if tools:
-                logger.info(f"Tools provided for MLX generation ({len(tools)} tools), formatting prompt")
-                # Convert tools to a simple prompt format for basic generation
-                tools_description = "You have access to the following tools:\n\n"
-                for i, tool in enumerate(tools):
-                    func = tool.get("function", {})
-                    tool_name = func.get('name', f'tool_{i}')
-                    tool_desc = func.get('description', 'No description')
-                    logger.info(f"Adding tool {i+1}: {tool_name} - {tool_desc}")
-                    tools_description += f"- {tool_name}: {tool_desc}\n"
-                    if func.get('parameters'):
-                        import json
-                        tools_description += f"  Parameters: {json.dumps(func.get('parameters'))}\n"
-                
-                tools_description += "\nTo use a tool, respond with a JSON object in this format:\n"
-                tools_description += '{"tool_calls": [{"name": "tool_name", "arguments": {...}}]}\n\n'
-                
-                # Prepend tools description to prompt
-                enhanced_prompt = tools_description + prompt
+                logger.info(f"Tools provided for MLX generation ({len(tools)} tools)")
+                # Create a message format that can use the same tool formatting logic
+                messages = [{"role": "user", "content": prompt}]
+                enhanced_prompt = self._format_prompt_with_tools(messages, tools)
                 logger.info(f"Enhanced MLX prompt length: {len(enhanced_prompt)} (original: {len(prompt)})")
             else:
                 enhanced_prompt = prompt
@@ -197,8 +184,17 @@ class MLXBackend(ModelBackend):
                 else:
                     logger.info("No tool calls found in MLX response")
 
-            return {
-                "text": response,
+            # Extract thinking content if this is a thinking model
+            thinking_content = None
+            final_response = response
+            if self.is_thinking_model:
+                logger.info("Processing response as thinking model")
+                thinking_content, final_response = self._extract_thinking(response)
+                if thinking_content:
+                    logger.info(f"Extracted thinking content ({len(thinking_content)} chars)")
+
+            result = {
+                "text": final_response,
                 "tool_calls": tool_calls,
                 "usage": {
                     "prompt_tokens": prompt_tokens,
@@ -206,6 +202,12 @@ class MLXBackend(ModelBackend):
                     "total_tokens": prompt_tokens + completion_tokens
                 }
             }
+            
+            # Add thinking content if present
+            if thinking_content:
+                result["thinking"] = thinking_content
+            
+            return result
         except ValueError as e:
             error_msg = f"Invalid generation parameters for model {self.model_path}. Check max_tokens ({max_tokens}), temperature ({temperature}), top_p ({top_p}), repetition_penalty ({repetition_penalty}). Error: {e}"
             logger.error(error_msg)
@@ -298,6 +300,9 @@ class MLXBackend(ModelBackend):
 
                         # Check for tool calls
                         tool_calls = self._extract_tool_calls(full_response) if tools else None
+                        
+                        logger.info(f"Streaming generation completed, response length: {len(full_response)}")
+                        logger.info(f"Tool calls extracted: {tool_calls}")
 
                         if tool_calls:
                             # Yield tool calls as structured data
@@ -341,16 +346,25 @@ class MLXBackend(ModelBackend):
             # Parse tool calls if present
             tool_calls = self._extract_tool_calls(response) if tools else None
 
+            # Extract thinking content if this is a thinking model
+            thinking_content = None
+            final_response = response
+            if self.is_thinking_model:
+                logger.info("Processing chat response as thinking model")
+                thinking_content, final_response = self._extract_thinking(response)
+                if thinking_content:
+                    logger.info(f"Extracted thinking content from chat ({len(thinking_content)} chars)")
+
             # Build message content
             message_content = {
                 "role": "assistant",
-                "content": response if not tool_calls else None
+                "content": final_response if not tool_calls else None
             }
 
             if tool_calls:
                 message_content["tool_calls"] = tool_calls
 
-            return {
+            result = {
                 "id": f"chatcmpl-{int(time.time())}",
                 "object": "chat.completion",
                 "created": int(time.time()),
@@ -366,6 +380,12 @@ class MLXBackend(ModelBackend):
                     "total_tokens": prompt_tokens + completion_tokens
                 }
             }
+            
+            # Add thinking content if present
+            if thinking_content:
+                result["choices"][0]["message"]["thinking"] = thinking_content
+            
+            return result
         except ValueError as e:
             error_msg = f"Invalid chat generation parameters for model {self.model_path}. Check max_tokens ({max_tokens}), temperature ({temperature}), top_p ({top_p}), repetition_penalty ({repetition_penalty}). Error: {e}"
             logger.error(error_msg)
@@ -470,6 +490,46 @@ class MLXBackend(ModelBackend):
             return formatted_calls if formatted_calls else None
         
         return None
+    
+    def _extract_thinking(self, text: str) -> tuple[Optional[str], str]:
+        """
+        Extract thinking/reasoning content from generated text.
+        
+        Returns:
+            tuple: (thinking_content, final_response)
+        """
+        import re
+        
+        # Pattern 1: <think>...</think> tags
+        think_pattern = r'<think>(.*?)</think>'
+        match = re.search(think_pattern, text, re.DOTALL)
+        
+        if match:
+            thinking = match.group(1).strip()
+            # Remove the thinking section from the response
+            final_response = re.sub(think_pattern, '', text, flags=re.DOTALL).strip()
+            return thinking, final_response
+        
+        # Pattern 2: <reasoning>...</reasoning> tags
+        reasoning_pattern = r'<reasoning>(.*?)</reasoning>'
+        match = re.search(reasoning_pattern, text, re.DOTALL)
+        
+        if match:
+            thinking = match.group(1).strip()
+            final_response = re.sub(reasoning_pattern, '', text, flags=re.DOTALL).strip()
+            return thinking, final_response
+        
+        # Pattern 3: Markdown-style thinking blocks
+        md_thinking_pattern = r'```thinking\n(.*?)\n```'
+        match = re.search(md_thinking_pattern, text, re.DOTALL)
+        
+        if match:
+            thinking = match.group(1).strip()
+            final_response = re.sub(md_thinking_pattern, '', text, flags=re.DOTALL).strip()
+            return thinking, final_response
+        
+        # No thinking found
+        return None, text
 
     async def embed(
         self,
@@ -577,31 +637,6 @@ class MLXBackend(ModelBackend):
         if not self.loaded:
             raise RuntimeError("Model not loaded")
         
-        # If tools are provided, format the prompt with tool information
-        if tools:
-            logger.info(f"Tools provided for MLX streaming ({len(tools)} tools), formatting prompt")
-            # Convert tools to a simple prompt format for basic generation
-            tools_description = "You have access to the following tools:\n\n"
-            for i, tool in enumerate(tools):
-                func = tools[i].get("function", {})
-                tool_name = func.get('name', f'tool_{i}')
-                tool_desc = func.get('description', 'No description')
-                logger.info(f"Adding tool {i+1}: {tool_name} - {tool_desc}")
-                tools_description += f"- {tool_name}: {tool_desc}\n"
-                if func.get('parameters'):
-                    import json
-                    tools_description += f"  Parameters: {json.dumps(func.get('parameters'))}\n"
-            
-            tools_description += "\nTo use a tool, respond with a JSON object in this format:\n"
-            tools_description += '{"tool_calls": [{"name": "tool_name", "arguments": {...}}]}\n\n'
-            
-            # Prepend tools description to prompt
-            enhanced_prompt = tools_description + prompt
-            logger.info(f"Enhanced MLX streaming prompt length: {len(enhanced_prompt)} (original: {len(prompt)})")
-        else:
-            enhanced_prompt = prompt
-            logger.info("No tools provided for MLX streaming")
-        
         max_tokens = max_tokens or self.max_tokens_default
         temperature = temperature if temperature is not None else self.temperature
         top_p = top_p if top_p is not None else self.top_p
@@ -610,13 +645,13 @@ class MLXBackend(ModelBackend):
         # MLX supports streaming, but we'll implement a simple version
         # For true streaming, you'd need to use the stream parameter in generate
         result = await self.generate(
-            prompt=enhanced_prompt,
+            prompt=prompt,
             max_tokens=max_tokens,
             temperature=temperature,
             top_p=top_p,
             repetition_penalty=repetition_penalty,
             stream=False,
-            tools=None,  # Already handled above
+            tools=tools,  # Already handled above
             **kwargs
         )
         yield result["text"]
@@ -637,7 +672,8 @@ class MLXBackend(ModelBackend):
                 "temperature": self.temperature,
                 "top_p": self.top_p,
                 "repetition_penalty": self.repetition_penalty,
-                "trust_remote_code": self.trust_remote_code
+                "trust_remote_code": self.trust_remote_code,
+                "is_thinking_model": self.is_thinking_model
             },
             "capabilities": [
                 ModelCapability.TEXT_GENERATION.value,

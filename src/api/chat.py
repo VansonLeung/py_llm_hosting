@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any, Union, AsyncIterator
 from src.services.proxy import proxy_request
 from src.libs.formatters import format_chat_response
+from src.libs.logging import logger
 from src.models.server import ServerMode
 from src.models.backend import ModelCapability
 import time
@@ -52,6 +53,10 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
         max_tokens=request.max_tokens,
         stream=True
     )
+    
+    logger.info(f"Streaming chat completion started for model {request.model}")
+    logger.info(f"Backend response type: {type(response_dict)}")
+    logger.info(f"Backend response content: {response_dict}")
     
     # If backend returns a stream/generator
     if hasattr(response_dict, '__aiter__'):
