@@ -20,8 +20,8 @@ load_dotenv()
 parser = argparse.ArgumentParser(description='Test vLLM streaming')
 parser.add_argument('--port', type=int, default=int(os.environ.get('PORT', 8000)), 
                    help='Port number for the server (default: from PORT env var or 8000)')
-parser.add_argument('--model', type=str, default='gpt2',
-                   help='Model name to test (default: gpt2)')
+parser.add_argument('--model', type=str, default='qwen2.5-0.5b-vllm',
+                   help='Model name to test (default: qwen2.5-0.5b-vllm)')
 args = parser.parse_args()
 
 BASE_URL = f"http://localhost:{args.port}/v1"
