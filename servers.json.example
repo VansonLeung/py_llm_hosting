@@ -20,6 +20,23 @@
     {
       "id": "a9a08fe5-bb3e-40a7-9604-f12a7344056b",
       "name": "qwen-mlx",
+      "model_name": "Qwen3-4B-Instruct-2507-4bit",
+      "status": "active",
+      "mode": "self-hosted",
+      "endpoint_url": null,
+      "model_path": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+      "backend_type": "mlx",
+      "backend_config": {
+        "is_thinking_model": false,
+        "max_tokens": 4096
+      },
+      "config": {},
+      "created_at": "2025-11-05 12:00:06.698239",
+      "updated_at": "2025-11-06 14:29:04.690364"
+    },
+    {
+      "id": "a9a08fe5-bb3e-40a7-9604-f12a7344056b",
+      "name": "qwen-mlx",
       "model_name": "Qwen3-4B-Thinking-2507-MLX-4bit",
       "status": "active",
       "mode": "self-hosted",
@@ -91,13 +108,13 @@
       "updated_at": "2025-11-06 09:17:39.404115"
     },
     {
-      "id": "vllm-qwen2.5-0.5b-4bit",
-      "name": "Qwen2.5 0.5B 4bit vLLM",
-      "model_name": "qwen2.5-0.5b-vllm",
+      "id": "Qwen3-4B-Instruct-2507-unsloth-bnb-4bit-vllm",
+      "name": "Qwen3-4B-Instruct-2507-unsloth-bnb-4bit vLLM",
+      "model_name": "Qwen3-4B-Instruct-2507-unsloth-bnb-4bit-vllm",
       "status": "active",
       "mode": "self-hosted",
       "endpoint_url": null,
-      "model_path": "Qwen/Qwen2.5-0.5B-Instruct-AWQ",
+      "model_path": "unsloth/Qwen3-4B-Instruct-2507-unsloth-bnb-4bit",
       "backend_type": "vllm",
       "backend_config": {
         "tensor_parallel_size": 1,
@@ -105,7 +122,7 @@
         "max_model_len": 4096,
         "dtype": "auto",
         "trust_remote_code": false,
-        "quantization": "awq"
+        "quantization": "bnb"
       },
       "config": {},
       "created_at": "2025-11-06 18:30:00.000000",
