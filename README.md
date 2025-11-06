@@ -71,6 +71,22 @@ pip install vllm==0.6.3
 cp servers.json.example servers.json
 ```
 
+### 1.5. Configure Environment (Optional)
+Create a `.env` file to customize the server port (defaults to 8000):
+
+```bash
+# Create .env file
+echo "PORT=8000" > .env
+
+# Or edit manually
+nano .env
+```
+
+The `.env` file supports:
+- `PORT`: Server port (default: 8000)
+
+**Note**: Test scripts in the `examples/` folder also respect the `PORT` environment variable and can be overridden with `--port` flag.
+
 ### 2. Start the Server
 
 ```bash
@@ -394,7 +410,7 @@ python main.py add-server \
 # Remove a server
 python main.py remove-server --name "My Model"
 
-# Start the API server
+# Start the API server (uses PORT from .env or defaults to 8000)
 python main.py start
 ```
 
@@ -579,8 +595,11 @@ Once the server is running, visit:
 Run the comprehensive test suite:
 
 ```bash
-# Test all endpoints
+# Test all endpoints (uses PORT from .env or defaults to 8000)
 python examples/test_all_endpoints.py
+
+# Test with custom port
+python examples/test_all_endpoints.py --port 3000
 
 # Test embeddings
 python examples/test_embeddings.py
@@ -595,14 +614,24 @@ python examples/test_streaming.py
 pytest
 ```
 
+**Note**: All test scripts in the `examples/` folder support the `--port` flag to override the port specified in `.env`.
+
 ## 🔧 Configuration
 
-### Environment Variables
+### Environment Variables (.env file)
+
+Create a `.env` file in the project root to configure the server:
 
 ```bash
+# Server configuration
+PORT=8000                    # Server port (default: 8000)
+
+# Optional: Logging and data configuration
 export LLM_LOG_LEVEL=INFO           # Logging level (DEBUG, INFO, WARNING, ERROR)
 export LLM_DATA_FILE=servers.json   # Path to data file
 ```
+
+**Note**: The `PORT` environment variable is automatically loaded from `.env` and used by both the server and test scripts. Test scripts can override this with the `--port` flag.
 
 ### Data Storage
 
