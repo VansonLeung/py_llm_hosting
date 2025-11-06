@@ -7,7 +7,7 @@ Optimized for BGE reranker models and similar architectures.
 
 from typing import Dict, Any, List, Optional, Tuple
 from src.models.backend import ModelBackend, ModelCapability, ModelBackendType, ModelBackendFactory
-from src.lib.logging import logger
+from src.libs.logging import logger
 import asyncio
 
 

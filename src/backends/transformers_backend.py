@@ -10,7 +10,7 @@ from typing import Dict, Any, List, AsyncIterator, Optional
 import torch
 
 from .base import LLMBackend, ModelConfig, GenerationParams, BackendType
-from ..lib.logging import logger
+from ..libs.logging import logger
 
 
 class TransformersBackend(LLMBackend):

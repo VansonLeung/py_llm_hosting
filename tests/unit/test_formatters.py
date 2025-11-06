@@ -1,5 +1,5 @@
 import pytest
-from src.lib.formatters import format_chat_response, format_embeddings_response, format_rerank_response
+from src.libs.formatters import format_chat_response, format_embeddings_response, format_rerank_response
 
 def test_format_chat_response():
     """Test formatting chat completion response."""

@@ -7,7 +7,7 @@ Supports multimodal models that can process both text and images.
 
 from typing import Dict, Any, List, Optional, AsyncIterator
 from src.models.backend import ModelBackend, ModelCapability, ModelBackendType, ModelBackendFactory
-from src.lib.logging import logger
+from src.libs.logging import logger
 import asyncio
 
 

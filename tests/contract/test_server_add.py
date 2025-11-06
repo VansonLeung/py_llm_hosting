@@ -1,5 +1,5 @@
 import pytest
-from src.lib.persistence import Persistence
+from src.libs.persistence import Persistence
 from src.models.server import LLMServer
 
 def test_add_server():

@@ -1,6 +1,6 @@
 import httpx
 from typing import Dict, Any
-from src.lib.logging import logger
+from src.libs.logging import logger
 
 async def proxy_request(endpoint_url: str, request_data: Dict[str, Any]) -> Dict[str, Any]:
     """Proxy a request to the LLM server."""

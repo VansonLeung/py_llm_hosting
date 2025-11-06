@@ -1,5 +1,5 @@
 from typing import Dict, Any, List
-from src.lib.logging import logger
+from src.libs.logging import logger
 
 def handle_tool_calls(request_data: Dict[str, Any], response_data: Dict[str, Any]) -> Dict[str, Any]:
     """Handle tool/function calls in chat completions."""

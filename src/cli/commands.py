@@ -1,7 +1,7 @@
 import click
-from src.lib.persistence import Persistence
+from src.libs.persistence import Persistence
 from src.models.server import LLMServer
-from src.lib.logging import logger
+from src.libs.logging import logger
 
 @click.group()
 @click.option('--data-file', default='servers.json', help='Data file to use')

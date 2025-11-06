@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any, Union, AsyncIterator
 from src.services.proxy import proxy_request
-from src.lib.formatters import format_chat_response
+from src.libs.formatters import format_chat_response
 from src.models.server import ServerMode
 from src.models.backend import ModelCapability
 import time
@@ -220,7 +220,7 @@ async def create_chat_completion(request: ChatCompletionRequest):
     """Create a chat completion."""
     try:
         # Find server for the model
-        from src.lib.persistence import Persistence
+        from src.libs.persistence import Persistence
         persistence = Persistence()
         servers = persistence.get_servers()
         server = next((s for s in servers if s.model_name == request.model), None)

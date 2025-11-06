@@ -1,7 +1,7 @@
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
-from src.lib.config import settings
-from src.lib.logging import logger
+from src.libs.config import settings
+from src.libs.logging import logger
 
 async def api_key_middleware(request: Request, call_next):
     """Middleware to check API key authentication."""

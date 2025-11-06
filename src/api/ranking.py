@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from src.services.proxy import proxy_request
-from src.lib.formatters import format_rerank_response
+from src.libs.formatters import format_rerank_response
 from src.models.server import ServerMode
 from src.models.backend import ModelCapability
 
@@ -53,7 +53,7 @@ async def create_rerank(request: RerankRequest):
     """Rerank documents."""
     try:
         # Find server for the model
-        from src.lib.persistence import Persistence
+        from src.libs.persistence import Persistence
         persistence = Persistence()
         servers = persistence.get_servers()
         server = next((s for s in servers if s.model_name == request.model), None)

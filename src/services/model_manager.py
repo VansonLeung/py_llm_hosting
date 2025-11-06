@@ -8,7 +8,7 @@ from typing import Dict, Optional, Any
 import asyncio
 from ..models.backend import ModelBackend, ModelBackendFactory, ModelBackendType
 from ..models.server import LLMServer, ServerMode, ServerStatus
-from ..lib.logging import logger
+from ..libs.logging import logger
 
 # Import to register all backends
 import src.backends

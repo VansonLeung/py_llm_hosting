@@ -9,7 +9,7 @@ from typing import Optional
 from .base import LLMBackend, ModelConfig, BackendType
 from .llamacpp_backend import LlamaCppBackend
 from .transformers_backend import TransformersBackend
-from ..lib.logging import logger
+from ..libs.logging import logger
 
 
 class BackendFactory:
