@@ -29,9 +29,9 @@ class MLXBackend(ModelBackend):
         try:
             import mlx.core as mx
             from mlx_lm import load, generate
-            
+
             logger.info(f"Loading model from {self.model_path} with MLX...")
-            
+
             # Run in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
@@ -43,20 +43,37 @@ class MLXBackend(ModelBackend):
                     }
                 )
             )
-            
+
             self.model, self.tokenizer = result
-            
+
             self.loaded = True
             logger.info(f"Model loaded successfully from {self.model_path}")
-            
-        except ImportError:
-            raise RuntimeError(
-                "MLX not installed or not on Apple Silicon. "
-                "Install with: pip install mlx mlx-lm"
-            )
+
+        except ImportError as e:
+            error_msg = f"MLX not installed or not on Apple Silicon. Install with: pip install mlx mlx-lm. Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except FileNotFoundError as e:
+            error_msg = f"Model not found at path: {self.model_path}. The model will be downloaded automatically on first use. Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except ValueError as e:
+            error_msg = f"Invalid MLX configuration for model {self.model_path}. Check trust_remote_code ({self.trust_remote_code}). Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except RuntimeError as e:
+            if "apple silicon" in str(e).lower() or "m1" in str(e).lower() or "m2" in str(e).lower() or "m3" in str(e).lower():
+                error_msg = f"MLX requires Apple Silicon (M1/M2/M3) Mac. This appears to be running on non-Apple Silicon hardware. Error: {e}"
+            elif "out of memory" in str(e).lower() or "memory" in str(e).lower():
+                error_msg = f"Out of memory while loading model {self.model_path}. Try using a smaller model or reducing max_tokens. Error: {e}"
+            else:
+                error_msg = f"Runtime error loading model {self.model_path}: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
         except Exception as e:
-            logger.error(f"Failed to load model: {e}")
-            raise
+            error_msg = f"Unexpected error loading model {self.model_path} with MLX backend. Model path: {self.model_path}, Config: trust_remote_code={self.trust_remote_code}. Error type: {type(e).__name__}, Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
     async def unload_model(self) -> None:
         """Unload the model from memory."""
@@ -117,39 +134,57 @@ class MLXBackend(ModelBackend):
     ) -> Dict[str, Any]:
         """Generate text from prompt."""
         if not self.loaded:
-            raise RuntimeError("Model not loaded")
-        
-        max_tokens = max_tokens or self.max_tokens_default
-        temperature = temperature if temperature is not None else self.temperature
-        top_p = top_p if top_p is not None else self.top_p
-        repetition_penalty = repetition_penalty if repetition_penalty is not None else self.repetition_penalty
-        
-        loop = asyncio.get_event_loop()
-        
-        # Use _generate with proper parameters
-        response = await loop.run_in_executor(
-            None,
-            lambda: self._generate(
-                prompt=prompt,
-                temperature=temperature,
-                top_p=top_p,
-                max_tokens=max_tokens,
-                repetition_penalty=repetition_penalty
+            error_msg = f"Model {self.model_path} is not loaded. Please start the server first."
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+        try:
+            max_tokens = max_tokens or self.max_tokens_default
+            temperature = temperature if temperature is not None else self.temperature
+            top_p = top_p if top_p is not None else self.top_p
+            repetition_penalty = repetition_penalty if repetition_penalty is not None else self.repetition_penalty
+
+            loop = asyncio.get_event_loop()
+
+            # Use _generate with proper parameters
+            response = await loop.run_in_executor(
+                None,
+                lambda: self._generate(
+                    prompt=prompt,
+                    temperature=temperature,
+                    top_p=top_p,
+                    max_tokens=max_tokens,
+                    repetition_penalty=repetition_penalty
+                )
             )
-        )
-        
-        # Count tokens (approximate)
-        prompt_tokens = len(self.tokenizer.encode(prompt))
-        completion_tokens = len(self.tokenizer.encode(response))
-        
-        return {
-            "text": response,
-            "usage": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": prompt_tokens + completion_tokens
+
+            # Count tokens (approximate)
+            prompt_tokens = len(self.tokenizer.encode(prompt))
+            completion_tokens = len(self.tokenizer.encode(response))
+
+            return {
+                "text": response,
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens
+                }
             }
-        }
+        except ValueError as e:
+            error_msg = f"Invalid generation parameters for model {self.model_path}. Check max_tokens ({max_tokens}), temperature ({temperature}), top_p ({top_p}), repetition_penalty ({repetition_penalty}). Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower() or "oom" in str(e).lower():
+                error_msg = f"Out of memory during generation with model {self.model_path}. Try reducing max_tokens (current: {max_tokens}). Error: {e}"
+            else:
+                error_msg = f"Runtime error during generation with model {self.model_path}: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except Exception as e:
+            error_msg = f"Unexpected error during text generation with model {self.model_path}. Prompt length: {len(prompt)}, max_tokens: {max_tokens}. Error type: {type(e).__name__}, Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
     async def generate_chat(
         self,
@@ -164,126 +199,149 @@ class MLXBackend(ModelBackend):
     ) -> Dict[str, Any]:
         """Generate chat completion with optional tools support."""
         logger.info(f"generate_chat called with: stream={stream}, temperature={temperature}, tools={bool(tools)}, kwargs={kwargs}")
-        
-        if not self.loaded:
-            raise RuntimeError("Model not loaded")
 
-        import time
-        import json
-        
-        # Apply chat template if available
-        if hasattr(self.tokenizer, 'apply_chat_template'):
-            # Try to apply with tools if supported
-            try:
-                if tools:
-                    prompt = self.tokenizer.apply_chat_template(
-                        messages,
-                        tools=tools,
-                        tokenize=False,
-                        add_generation_prompt=True
-                    )
-                else:
-                    prompt = self.tokenizer.apply_chat_template(
-                        messages,
-                        tokenize=False,
-                        add_generation_prompt=True
-                    )
-            except TypeError:
-                # Fallback if tools not supported
-                logger.warning("Tokenizer doesn't support tools parameter")
+        if not self.loaded:
+            error_msg = f"Model {self.model_path} is not loaded. Please start the server first."
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+        try:
+            import time
+            import json
+
+            # Apply chat template if available
+            if hasattr(self.tokenizer, 'apply_chat_template'):
+                # Try to apply with tools if supported
+                try:
+                    if tools:
+                        prompt = self.tokenizer.apply_chat_template(
+                            messages,
+                            tools=tools,
+                            tokenize=False,
+                            add_generation_prompt=True
+                        )
+                    else:
+                        prompt = self.tokenizer.apply_chat_template(
+                            messages,
+                            tokenize=False,
+                            add_generation_prompt=True
+                        )
+                except TypeError:
+                    # Fallback if tools not supported
+                    logger.warning("Tokenizer doesn't support tools parameter")
+                    prompt = self._format_prompt_with_tools(messages, tools)
+            else:
+                # Fallback: manual formatting
                 prompt = self._format_prompt_with_tools(messages, tools)
-        else:
-            # Fallback: manual formatting
-            prompt = self._format_prompt_with_tools(messages, tools)
-        
-        max_tokens = max_tokens or self.max_tokens_default
-        temperature = temperature if temperature is not None else self.temperature
-        top_p = top_p if top_p is not None else self.top_p
-        repetition_penalty = repetition_penalty if repetition_penalty is not None else self.repetition_penalty
-        
-        # Handle streaming
-        if stream:
-            async def stream_wrapper():
-                loop = asyncio.get_event_loop()
-                
-                # MLX generate function - run in executor
-                def generate_sync():
-                    return self._generate(
-                        prompt=prompt,
-                        temperature=temperature,
-                        top_p=top_p,
-                        max_tokens=max_tokens,
-                        repetition_penalty=repetition_penalty
-                    )
-                
-                full_response = await loop.run_in_executor(None, generate_sync)
-                
-                # Check for tool calls
-                tool_calls = self._extract_tool_calls(full_response) if tools else None
-                
-                if tool_calls:
-                    # Yield tool calls as structured data
-                    yield {
-                        "tool_calls": tool_calls,
-                        "content": None
-                    }
-                else:
-                    # Simulate streaming by yielding words
-                    words = full_response.split()
-                    for i, word in enumerate(words):
-                        if i == 0:
-                            yield word
+
+            max_tokens = max_tokens or self.max_tokens_default
+            temperature = temperature if temperature is not None else self.temperature
+            top_p = top_p if top_p is not None else self.top_p
+            repetition_penalty = repetition_penalty if repetition_penalty is not None else self.repetition_penalty
+
+            # Handle streaming
+            if stream:
+                async def stream_wrapper():
+                    try:
+                        loop = asyncio.get_event_loop()
+
+                        # MLX generate function - run in executor
+                        def generate_sync():
+                            return self._generate(
+                                prompt=prompt,
+                                temperature=temperature,
+                                top_p=top_p,
+                                max_tokens=max_tokens,
+                                repetition_penalty=repetition_penalty
+                            )
+
+                        full_response = await loop.run_in_executor(None, generate_sync)
+
+                        # Check for tool calls
+                        tool_calls = self._extract_tool_calls(full_response) if tools else None
+
+                        if tool_calls:
+                            # Yield tool calls as structured data
+                            yield {
+                                "tool_calls": tool_calls,
+                                "content": None
+                            }
                         else:
-                            yield " " + word
-                        await asyncio.sleep(0.01)  # Small delay for visual effect
-            
-            return stream_wrapper()
-        
-        # Non-streaming
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: self._generate(
-                prompt=prompt,
-                temperature=temperature,
-                top_p=top_p,
-                max_tokens=max_tokens,
-                repetition_penalty=repetition_penalty
+                            # Simulate streaming by yielding words
+                            words = full_response.split()
+                            for i, word in enumerate(words):
+                                if i == 0:
+                                    yield word
+                                else:
+                                    yield " " + word
+                                await asyncio.sleep(0.01)  # Small delay for visual effect
+                    except Exception as e:
+                        error_msg = f"Error during streaming chat generation with model {self.model_path}. Error type: {type(e).__name__}, Error: {e}"
+                        logger.error(error_msg)
+                        raise RuntimeError(error_msg)
+
+                return stream_wrapper()
+
+            # Non-streaming
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self._generate(
+                    prompt=prompt,
+                    temperature=temperature,
+                    top_p=top_p,
+                    max_tokens=max_tokens,
+                    repetition_penalty=repetition_penalty
+                )
             )
-        )
-        
-        # Count tokens
-        prompt_tokens = len(self.tokenizer.encode(prompt))
-        completion_tokens = len(self.tokenizer.encode(response))
-        
-        # Parse tool calls if present
-        tool_calls = self._extract_tool_calls(response) if tools else None
-        
-        # Build message content
-        message_content = {
-            "role": "assistant",
-            "content": response if not tool_calls else None
-        }
-        
-        if tool_calls:
-            message_content["tool_calls"] = tool_calls
-        
-        return {
-            "id": f"chatcmpl-{int(time.time())}",
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": self.model_path,
-            "choices": [{
-                "index": 0,
-                "message": message_content,
-                "finish_reason": "tool_calls" if tool_calls else "stop"
-            }],
-            "usage": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": prompt_tokens + completion_tokens
+
+            # Count tokens
+            prompt_tokens = len(self.tokenizer.encode(prompt))
+            completion_tokens = len(self.tokenizer.encode(response))
+
+            # Parse tool calls if present
+            tool_calls = self._extract_tool_calls(response) if tools else None
+
+            # Build message content
+            message_content = {
+                "role": "assistant",
+                "content": response if not tool_calls else None
             }
-        }
+
+            if tool_calls:
+                message_content["tool_calls"] = tool_calls
+
+            return {
+                "id": f"chatcmpl-{int(time.time())}",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": self.model_path,
+                "choices": [{
+                    "index": 0,
+                    "message": message_content,
+                    "finish_reason": "tool_calls" if tool_calls else "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens
+                }
+            }
+        except ValueError as e:
+            error_msg = f"Invalid chat generation parameters for model {self.model_path}. Check max_tokens ({max_tokens}), temperature ({temperature}), top_p ({top_p}), repetition_penalty ({repetition_penalty}). Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower() or "oom" in str(e).lower():
+                error_msg = f"Out of memory during chat generation with model {self.model_path}. Try reducing max_tokens (current: {max_tokens}). Error: {e}"
+            else:
+                error_msg = f"Runtime error during chat generation with model {self.model_path}: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except Exception as e:
+            error_msg = f"Unexpected error during chat generation with model {self.model_path}. Messages: {len(messages)} message(s), max_tokens: {max_tokens}, temperature: {temperature}. Error type: {type(e).__name__}, Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
     
     def _format_prompt_with_tools(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> str:
         """Format prompt with tools information."""
@@ -381,55 +439,56 @@ class MLXBackend(ModelBackend):
     ) -> Dict[str, Any]:
         """Generate embeddings using MLX."""
         if not self.loaded:
-            raise RuntimeError("Model not loaded")
-        
+            error_msg = f"Model {self.model_path} is not loaded. Please start the server first."
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
         try:
             import mlx.core as mx
             import time
-            
+
             logger.info(f"Generating embeddings for {len(texts)} texts with MLX")
-            
+
             # Check if model supports embeddings
             if not (hasattr(self.model, 'model') and hasattr(self.model.model, 'embed_tokens')):
-                raise RuntimeError(
-                    "MLX model does not have embed_tokens. "
-                    "This model may not support embeddings."
-                )
-            
+                error_msg = f"MLX model {self.model_path} does not support embeddings. The model may not have embed_tokens layer."
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+
             # Run embedding generation in executor
             loop = asyncio.get_event_loop()
-            
+
             def embed_sync():
                 embeddings = []
                 total_tokens = 0
-                
+
                 for text in texts:
                     # Tokenize the input
                     input_ids = self.tokenizer.encode(text)
                     total_tokens += len(input_ids)
-                    
+
                     # Convert to MLX array
                     input_ids_mx = mx.array([input_ids])
-                    
+
                     # Get token embeddings from the model
                     token_embeddings = self.model.model.embed_tokens(input_ids_mx)
-                    
+
                     # Mean pooling across sequence dimension
                     # token_embeddings shape: (1, seq_len, hidden_dim)
                     mean_embedding = mx.mean(token_embeddings[0], axis=0)
-                    
+
                     # Normalize the embedding
                     norm = mx.sqrt(mx.sum(mean_embedding * mean_embedding))
                     normalized_embedding = mean_embedding / norm
-                    
+
                     # Convert to list
                     embedding_list = normalized_embedding.tolist()
                     embeddings.append(embedding_list)
-                
+
                 return embeddings, total_tokens
-            
+
             embeddings, total_tokens = await loop.run_in_executor(None, embed_sync)
-            
+
             # Format as OpenAI-compatible response
             data = []
             for i, embedding in enumerate(embeddings):
@@ -438,7 +497,7 @@ class MLXBackend(ModelBackend):
                     "embedding": embedding,
                     "index": i
                 })
-            
+
             return {
                 "object": "list",
                 "data": data,
@@ -448,12 +507,22 @@ class MLXBackend(ModelBackend):
                     "total_tokens": total_tokens
                 }
             }
-            
+
+        except ValueError as e:
+            error_msg = f"Invalid embedding parameters for model {self.model_path}. Check input texts format. Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower() or "oom" in str(e).lower():
+                error_msg = f"Out of memory during embedding generation with model {self.model_path}. Try processing fewer texts at once. Error: {e}"
+            else:
+                error_msg = f"Runtime error during embedding generation with model {self.model_path}: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
         except Exception as e:
-            logger.error(f"Error generating embeddings: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            raise RuntimeError(f"MLX embedding generation failed: {str(e)}")
+            error_msg = f"Unexpected error during embedding generation with model {self.model_path}. Number of texts: {len(texts)}. Error type: {type(e).__name__}, Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
     async def stream_generate(
         self,

@@ -24,33 +24,48 @@ class SentenceTransformersBackend(ModelBackend):
         """Load the model using sentence-transformers."""
         try:
             from sentence_transformers import SentenceTransformer
-            
+
             logger.info(f"Loading model from {self.model_path} with sentence-transformers...")
-            
+
             # Run in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
-            
+
             def load_sync():
                 return SentenceTransformer(
                     self.model_path,
                     device=self.device
                 )
-            
+
             self.model = await loop.run_in_executor(None, load_sync)
-            
+
             self.loaded = True
             logger.info(f"Model loaded successfully from {self.model_path}")
             logger.info(f"Device: {self.model.device}")
             logger.info(f"Max sequence length: {self.model.max_seq_length}")
-            
-        except ImportError:
-            raise RuntimeError(
-                "sentence-transformers not installed. "
-                "Install with: pip install sentence-transformers"
-            )
+
+        except ImportError as e:
+            error_msg = f"sentence-transformers not installed. Install with: pip install sentence-transformers. Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except FileNotFoundError as e:
+            error_msg = f"Model not found at path: {self.model_path}. The model will be downloaded automatically on first use. Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except ValueError as e:
+            error_msg = f"Invalid sentence-transformers configuration for model {self.model_path}. Check device ({self.device}) and model path. Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower() or "memory" in str(e).lower():
+                error_msg = f"Out of memory while loading model {self.model_path}. Try using CPU device or a smaller model. Error: {e}"
+            else:
+                error_msg = f"Runtime error loading model {self.model_path}: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
         except Exception as e:
-            logger.error(f"Failed to load model: {e}")
-            raise
+            error_msg = f"Unexpected error loading model {self.model_path} with sentence-transformers backend. Model path: {self.model_path}, Device: {self.device}. Error type: {type(e).__name__}, Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
     async def unload_model(self) -> None:
         """Unload the model from memory."""
@@ -98,14 +113,25 @@ class SentenceTransformersBackend(ModelBackend):
         if not self.loaded:
             raise RuntimeError("Model not loaded")
         
+    async def embed(
+        self,
+        texts: List[str],
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Generate embeddings using sentence-transformers."""
+        if not self.loaded:
+            error_msg = f"Model {self.model_path} is not loaded. Please start the server first."
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
         try:
             import time
-            
+
             logger.info(f"Generating embeddings for {len(texts)} texts with sentence-transformers")
-            
+
             # Run embedding generation in executor
             loop = asyncio.get_event_loop()
-            
+
             def embed_sync():
                 # Generate embeddings
                 embeddings = self.model.encode(
@@ -114,12 +140,12 @@ class SentenceTransformersBackend(ModelBackend):
                     convert_to_numpy=True
                 )
                 return embeddings
-            
+
             embeddings_array = await loop.run_in_executor(None, embed_sync)
-            
+
             # Convert to list format
             embeddings_list = embeddings_array.tolist()
-            
+
             # Format as OpenAI-compatible response
             data = []
             for i, embedding in enumerate(embeddings_list):
@@ -128,10 +154,10 @@ class SentenceTransformersBackend(ModelBackend):
                     "embedding": embedding,
                     "index": i
                 })
-            
+
             # Estimate token count (rough approximation)
             total_tokens = sum(len(text.split()) for text in texts) * 2
-            
+
             return {
                 "object": "list",
                 "data": data,
@@ -141,12 +167,22 @@ class SentenceTransformersBackend(ModelBackend):
                     "total_tokens": total_tokens
                 }
             }
-            
+
+        except ValueError as e:
+            error_msg = f"Invalid embedding parameters for model {self.model_path}. Check input texts format and length. Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower() or "oom" in str(e).lower():
+                error_msg = f"Out of memory during embedding generation with model {self.model_path}. Try processing fewer texts at once. Error: {e}"
+            else:
+                error_msg = f"Runtime error during embedding generation with model {self.model_path}: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
         except Exception as e:
-            logger.error(f"Error generating embeddings: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            raise RuntimeError(f"Sentence Transformers embedding generation failed: {str(e)}")
+            error_msg = f"Unexpected error during embedding generation with model {self.model_path}. Number of texts: {len(texts)}. Error type: {type(e).__name__}, Error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
     async def stream_generate(
         self,
