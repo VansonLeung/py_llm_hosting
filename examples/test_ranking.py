@@ -2,8 +2,20 @@
 
 import requests
 import json
+import os
+import argparse
+from dotenv import load_dotenv
 
-BASE_URL = "http://localhost:8000/v1"
+# Load environment variables
+load_dotenv()
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='Test ranking endpoint')
+parser.add_argument('--port', type=int, default=int(os.environ.get('PORT', 8000)), 
+                   help='Port number for the server (default: from PORT env var or 8000)')
+args = parser.parse_args()
+
+BASE_URL = f"http://localhost:{args.port}/v1"
 
 def test_rerank():
     """Test document reranking."""

@@ -3,8 +3,20 @@
 import requests
 import json
 import numpy as np
+import os
+import argparse
+from dotenv import load_dotenv
 
-BASE_URL = "http://localhost:8000/v1"
+# Load environment variables
+load_dotenv()
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='Test MLX embeddings')
+parser.add_argument('--port', type=int, default=int(os.environ.get('PORT', 8000)), 
+                   help='Port number for the server (default: from PORT env var or 8000)')
+args = parser.parse_args()
+
+BASE_URL = f"http://localhost:{args.port}/v1"
 
 def cosine_similarity(a, b):
     """Calculate cosine similarity between two vectors."""

@@ -5,11 +5,25 @@ Test script comparing llama-cpp and MLX backends.
 import requests
 import json
 import time
+import os
+import argparse
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='Test LLM backends')
+parser.add_argument('--port', type=int, default=int(os.environ.get('PORT', 8000)), 
+                   help='Port number for the server (default: from PORT env var or 8000)')
+args = parser.parse_args()
+
+BASE_URL = f"http://localhost:{args.port}/v1"
 
 
 def test_backend(model: str, backend_name: str, prompt: str, stream: bool = False):
     """Test a specific backend."""
-    url = "http://localhost:8000/v1/chat/completions"
+    url = f"{BASE_URL}/chat/completions"
     
     payload = {
         "model": model,

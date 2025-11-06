@@ -1,7 +1,12 @@
+import os
+from dotenv import load_dotenv
 import click
 from src.libs.persistence import Persistence
 from src.models.server import LLMServer
 from src.libs.logging import logger
+
+# Load environment variables from .env file
+load_dotenv()
 
 @click.group()
 @click.option('--data-file', default='servers.json', help='Data file to use')
@@ -118,7 +123,7 @@ def remove_server(ctx, id):
         raise click.Abort()
 
 @cli.command()
-@click.option('--port', default=8000, help='Port to run the API server on')
+@click.option('--port', default=lambda: int(os.environ.get('PORT', 8000)), help='Port to run the API server on')
 @click.option('--host', default='0.0.0.0', help='Host to bind the API server to')
 @click.pass_context
 def start(ctx, port, host):

@@ -5,11 +5,25 @@ Example script demonstrating streaming chat completions.
 import requests
 import json
 import sys
+import os
+import argparse
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='Test MLX streaming')
+parser.add_argument('--port', type=int, default=int(os.environ.get('PORT', 8000)), 
+                   help='Port number for the server (default: from PORT env var or 8000)')
+args = parser.parse_args()
+
+BASE_URL = f"http://localhost:{args.port}/v1"
 
 
 def stream_chat(prompt: str, model: str = "qwen2.5-0.5b"):
     """Stream a chat completion and print tokens as they arrive."""
-    url = "http://localhost:8000/v1/chat/completions"
+    url = f"{BASE_URL}/chat/completions"
     
     payload = {
         "model": model,
