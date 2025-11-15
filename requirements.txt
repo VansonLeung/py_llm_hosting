@@ -30,7 +30,8 @@ sentencepiece==0.2.0
 
 # Option 2: Transformers + vLLM (High-performance GPU inference)
 transformers==4.55.2
-torch==2.8.0
+torch==2.9.1
+torchvision==0.24.1
 accelerate==1.1.1
 # vllm==0.11.0  # Uncomment for high-performance GPU inference
 # intel_extension_for_pytorch==2.8.0 # Uncomment for Intel CPU optimizations

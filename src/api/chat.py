@@ -51,7 +51,7 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
         tools=request.tools,
         temperature=request.temperature,
         max_tokens=request.max_tokens,
-        stream=True
+        stream=False
     )
     
     logger.info(f"Streaming chat completion started for model {request.model}")

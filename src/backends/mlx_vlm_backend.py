@@ -24,6 +24,67 @@ class MLXVLMBackend(ModelBackend):
         self.processor = None
         self.max_tokens_default = kwargs.get("max_tokens", 512)
 
+    def _normalize_generation_response(
+        self,
+        response: Any,
+        prompt_text: str,
+    ) -> tuple[str, dict[str, int]]:
+        """Return response text and usage dict even when response is a dataclass."""
+
+        def estimate_tokens(text: Optional[str]) -> int:
+            if isinstance(text, str) and text.strip():
+                return len(text.split())
+            return 0
+
+        prompt_tokens_estimate = estimate_tokens(prompt_text)
+
+        text: str
+        if isinstance(response, str):
+            text = response
+        elif isinstance(response, dict) and isinstance(response.get("text"), str):
+            text = response.get("text", "")
+        elif hasattr(response, "text") and isinstance(getattr(response, "text"), str):
+            text = getattr(response, "text")
+        else:
+            text = str(response) if response is not None else ""
+
+        completion_tokens_attr: Optional[int] = None
+        prompt_tokens_attr: Optional[int] = None
+        total_tokens_attr: Optional[int] = None
+
+        if isinstance(response, dict):
+            completion_tokens_attr = response.get("generation_tokens")
+            prompt_tokens_attr = response.get("prompt_tokens")
+            total_tokens_attr = response.get("total_tokens")
+        else:
+            completion_tokens_attr = getattr(response, "generation_tokens", None)
+            prompt_tokens_attr = getattr(response, "prompt_tokens", None)
+            total_tokens_attr = getattr(response, "total_tokens", None)
+
+        prompt_tokens = (
+            prompt_tokens_attr
+            if isinstance(prompt_tokens_attr, int)
+            else prompt_tokens_estimate
+        )
+        completion_tokens = (
+            completion_tokens_attr
+            if isinstance(completion_tokens_attr, int)
+            else estimate_tokens(text)
+        )
+        total_tokens = (
+            total_tokens_attr
+            if isinstance(total_tokens_attr, int)
+            else prompt_tokens + completion_tokens
+        )
+
+        usage = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+        }
+
+        return text, usage
+
     def _load_image_from_source(self, image_source: str):
         """Load an image from local path, HTTP(S) URL, or data URI."""
         if not isinstance(image_source, str) or not image_source.strip():
@@ -246,15 +307,11 @@ class MLXVLMBackend(ModelBackend):
                 )
             )
 
-            usage = {
-                "prompt_tokens": len(prompt.split()),
-                "completion_tokens": len(response.split()),
-                "total_tokens": len(prompt.split()) + len(response.split())
-            }
+            text, usage = self._normalize_generation_response(response, prompt)
 
             logger.debug(f"Generation with image completed. Usage: {usage}")
             return {
-                "text": response,
+                "text": text,
                 "usage": usage
             }
 
@@ -329,13 +386,13 @@ class MLXVLMBackend(ModelBackend):
             logger.error(error_msg)
             raise ValueError(error_msg)
 
-        if stream:
-            error_msg = (
-                f"Streaming not supported by MLX-VLM backend. "
-                f"Set stream=False for chat completions."
-            )
-            logger.error(error_msg)
-            raise ValueError(error_msg)
+        # if stream:
+        #     error_msg = (
+        #         f"Streaming not supported by MLX-VLM backend. "
+        #         f"Set stream=False for chat completions."
+            # )
+            # logger.error(error_msg)
+            # raise ValueError(error_msg)
 
         # Extract text and images from messages
         text_parts = []
@@ -468,11 +525,7 @@ class MLXVLMBackend(ModelBackend):
                     )
                 )
 
-            usage = {
-                "prompt_tokens": len(prompt.split()),
-                "completion_tokens": len(response.split()),
-                "total_tokens": len(prompt.split()) + len(response.split())
-            }
+            text, usage = self._normalize_generation_response(response, prompt)
 
             logger.debug(f"Chat completion generated. Usage: {usage}")
             return {
@@ -484,7 +537,7 @@ class MLXVLMBackend(ModelBackend):
                     "index": 0,
                     "message": {
                         "role": "assistant",
-                        "content": response
+                        "content": text
                     },
                     "finish_reason": "stop"
                 }],

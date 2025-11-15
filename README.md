@@ -16,6 +16,18 @@ A production-ready FastAPI-based platform for self-hosting Large Language Model 
 - **� Status Tracking**: Real-time monitoring of model states
 - **🌐 Proxy Mode**: Route requests to external API services
 
+## 🖥️ Chat Portal Frontend
+
+Need a local UI to manage endpoints, tools, and conversations? A Vite + React + shadcn frontend now lives in `frontend/chat-portal`.
+
+```bash
+cd frontend/chat-portal
+npm install
+npm run dev
+```
+
+The portal authenticates locally (browser storage), lets you create/manage endpoints, attach tools or MCP connectors, and run multimodal chats against any OpenAI-compatible server (including this repo's API). All conversation history, tooling selections, and credentials stay inside your browser unless you wire up a remote backend.
+
 ## 🛠️ Supported Backends
 
 | Backend | Description | Best For |
