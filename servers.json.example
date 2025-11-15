@@ -127,6 +127,20 @@
       "config": {},
       "created_at": "2025-11-06 18:30:00.000000",
       "updated_at": "2025-11-06 18:30:00.000000"
+    },
+    {
+      "id": "521fdb17-fd65-4469-bce5-7d3499678070",
+      "name": "Chandra-4bit",
+      "model_name": "chandra-4bit",
+      "status": "active",
+      "mode": "self-hosted",
+      "endpoint_url": null,
+      "model_path": "mlx-community/chandra-4bit",
+      "backend_type": "mlx",
+      "backend_config": {},
+      "config": {},
+      "created_at": "2025-11-05 13:26:07.130356",
+      "updated_at": "2025-11-15 13:07:15.796247"
     }
   ],
   "mcp_sessions": []
