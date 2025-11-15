@@ -6,9 +6,13 @@ Supports multimodal models that can process both text and images.
 """
 
 from typing import Dict, Any, List, Optional, AsyncIterator
+from pathlib import Path
+import base64
+import io
+import asyncio
+import httpx
 from src.models.backend import ModelBackend, ModelCapability, ModelBackendType, ModelBackendFactory
 from src.libs.logging import logger
-import asyncio
 
 
 class MLXVLMBackend(ModelBackend):
@@ -19,6 +23,85 @@ class MLXVLMBackend(ModelBackend):
         self.model = None
         self.processor = None
         self.max_tokens_default = kwargs.get("max_tokens", 512)
+
+    def _load_image_from_source(self, image_source: str):
+        """Load an image from local path, HTTP(S) URL, or data URI."""
+        if not isinstance(image_source, str) or not image_source.strip():
+            error_msg = (
+                f"Invalid image reference: expected non-empty string, got {repr(image_source)}"
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        try:
+            from PIL import Image
+        except ImportError as e:
+            error_msg = (
+                f"Pillow not installed. Install with: pip install pillow. "
+                f"Error: {e}"
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+        normalized_source = image_source.strip()
+
+        # Resolve image bytes from supported schemes
+        image_bytes: bytes
+        if normalized_source.startswith("data:"):
+            if "," not in normalized_source:
+                error_msg = (
+                    f"Invalid data URI format for image: {normalized_source[:32]}..."
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            _, data_part = normalized_source.split(",", 1)
+            try:
+                image_bytes = base64.b64decode(data_part)
+            except (base64.binascii.Error, ValueError) as e:
+                error_msg = (
+                    f"Failed to decode base64 image data. Error: {e}"
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+        elif normalized_source.startswith("http://") or normalized_source.startswith("https://"):
+            try:
+                response = httpx.get(normalized_source, timeout=30.0)
+                response.raise_for_status()
+                image_bytes = response.content
+            except httpx.HTTPError as e:
+                error_msg = (
+                    f"Failed to download image from URL: {normalized_source}. "
+                    f"Ensure the URL is reachable. Error: {e}"
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+        else:
+            path = Path(normalized_source).expanduser()
+            if not path.exists():
+                error_msg = (
+                    f"Image file not found: {path}. Provide an absolute path, URL, or data URI."
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            try:
+                image_bytes = path.read_bytes()
+            except OSError as e:
+                error_msg = (
+                    f"Failed to read image file: {path}. Error: {e}"
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+        try:
+            image = Image.open(io.BytesIO(image_bytes))
+            image.load()  # Ensure image is fully decoded
+            return image
+        except Exception as e:
+            error_msg = (
+                f"Failed to decode image from source: {normalized_source}. Error: {e}"
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
 
     async def load_model(self) -> None:
         """Load the MLX-VLM model."""
@@ -90,7 +173,7 @@ class MLXVLMBackend(ModelBackend):
         temperature: float = 1.0,
         **kwargs
     ) -> Dict[str, Any]:
-        """Generate text from prompt and image."""
+        """Generate text from prompt and image reference (path/URL/data URI)."""
         if not self.loaded:
             error_msg = (
                 "Model not loaded. Call load_model() first. "
@@ -101,7 +184,6 @@ class MLXVLMBackend(ModelBackend):
 
         try:
             from mlx_vlm import generate as vlm_generate
-            from PIL import Image
         except ImportError as e:
             error_msg = (
                 f"Required libraries not installed. Install with: pip install mlx-vlm pillow. "
@@ -146,35 +228,7 @@ class MLXVLMBackend(ModelBackend):
         max_tokens = max_tokens or self.max_tokens_default
 
         # Load and validate image
-        try:
-            image = Image.open(image_path)
-            # Verify image loaded successfully
-            image.verify()
-            # Re-open after verify (verify closes the file)
-            image = Image.open(image_path)
-        except FileNotFoundError as e:
-            error_msg = (
-                f"Image file not found: {image_path}. "
-                f"Please ensure the image path exists and is accessible. "
-                f"Error: {e}"
-            )
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
-        except (IOError, OSError) as e:
-            error_msg = (
-                f"Failed to load image: {image_path}. "
-                f"Please ensure the file is a valid image format (JPEG, PNG, etc.). "
-                f"Error: {e}"
-            )
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
-        except Exception as e:
-            error_msg = (
-                f"Unexpected error loading image: {image_path}. "
-                f"Error type: {type(e).__name__}, Error: {e}"
-            )
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
+        image = self._load_image_from_source(image_path)
 
         try:
             logger.debug(f"Generating text with image. Prompt length: {len(prompt)}, image: {image_path}, max_tokens: {max_tokens}")
@@ -241,7 +295,6 @@ class MLXVLMBackend(ModelBackend):
 
         try:
             from mlx_vlm import generate as vlm_generate
-            from PIL import Image
             import time
         except ImportError as e:
             error_msg = (
@@ -348,31 +401,7 @@ class MLXVLMBackend(ModelBackend):
                                 logger.error(error_msg)
                                 raise ValueError(error_msg)
 
-                            try:
-                                if image_url.startswith("data:"):
-                                    # Base64 encoded image
-                                    import base64
-                                    import io
-                                    image_data = base64.b64decode(image_url.split(",")[1])
-                                    image = Image.open(io.BytesIO(image_data))
-                                else:
-                                    # File path or URL
-                                    image = Image.open(image_url)
-                                # Verify image loaded successfully
-                                image.verify()
-                                # Re-open after verify
-                                if image_url.startswith("data:"):
-                                    image = Image.open(io.BytesIO(image_data))
-                                else:
-                                    image = Image.open(image_url)
-                            except (IOError, OSError, ValueError) as e:
-                                error_msg = (
-                                    f"Failed to load image from message {i}, part {j}: {image_url}. "
-                                    f"Please ensure the image URL/path is valid and accessible. "
-                                    f"Error: {e}"
-                                )
-                                logger.error(error_msg)
-                                raise RuntimeError(error_msg)
+                            image = self._load_image_from_source(image_url)
                         else:
                             error_msg = (
                                 f"Unsupported content type in message {i}, part {j}: {part_type}. "

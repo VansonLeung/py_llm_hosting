@@ -8,6 +8,7 @@ A production-ready FastAPI-based platform for self-hosting Large Language Model 
 - **💬 Chat Completions**: Streaming and non-streaming modes
 - **📊 Embeddings**: Generate text embeddings for semantic search
 - **🔍 Document Reranking**: Cross-encoder based relevance ranking
+- **🖼️ Vision Chat**: MLX-VLM backend for multimodal prompts (text + image) on Apple Silicon
 - **🎯 Multiple Backends**: Support for llama-cpp, MLX, Transformers, vLLM, and reranker models
 - **⚡ Streaming Support**: Server-Sent Events (SSE) for real-time responses
 - **�️ Apple Silicon Optimized**: Native MLX backend for M-series chips
@@ -21,6 +22,7 @@ A production-ready FastAPI-based platform for self-hosting Large Language Model 
 |---------|-------------|----------|
 | **llama-cpp** | GGUF quantized models | CPU/GPU inference, low memory |
 | **MLX** | Apple Silicon optimized | M1/M2/M3 Macs, fastest on Apple Silicon |
+| **MLX-VLM** | Apple Silicon multimodal (text + vision) | On-device image reasoning |
 | **Transformers** | HuggingFace models | Wide model compatibility |
 | **vLLM** | High-performance inference | GPU clusters, high throughput |
 | **Reranker** | Cross-encoder models | Document reranking, semantic search |
@@ -58,6 +60,12 @@ pip install -r requirements.txt
 ```bash
 pip install mlx==0.20.0 mlx-lm==0.19.3
 ```
+
+#### For Vision-Language Models (MLX-VLM):
+```bash
+pip install mlx-vlm pillow
+```
+*Requires Apple Silicon (M-series) hardware.*
 
 #### For GPU Inference (vLLM):
 ```bash
@@ -269,6 +277,14 @@ python main.py add-server \
   --backend mlx \
   --model-path "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
 
+# Or add an MLX-VLM server for multimodal chat
+python main.py add-server \
+  --name "Chandra Vision" \
+  --model "chandra-4bit" \
+  --mode self-hosted \
+  --backend mlx-vlm \
+  --model-path "mlx-community/chandra-4bit"
+
 # Or add a proxy server (external API)
 python main.py add-server \
   --name "OpenAI GPT-4" \
@@ -353,6 +369,41 @@ for line in response.iter_lines():
                 content = chunk["choices"][0]["delta"].get("content", "")
                 print(content, end="", flush=True)
 ```
+
+### Vision Chat With Images (MLX-VLM)
+
+```python
+import base64
+from pathlib import Path
+import httpx
+
+image_bytes = Path("samples/cat.png").read_bytes()
+image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+response = httpx.post(
+  "http://localhost:8000/v1/chat/completions",
+  json={
+    "model": "chandra-4bit",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "text", "text": "Describe this image"},
+          {
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{image_b64}"}
+          }
+        ]
+      }
+    ]
+  },
+  timeout=120.0
+)
+
+print(response.json()["choices"][0]["message"]["content"])
+```
+
+> Tip: Run `python examples/test_mlx_vlm.py --image <path>` for a ready-made CLI tester.
 
 ### Generate Embeddings
 

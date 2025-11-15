@@ -136,8 +136,10 @@
       "mode": "self-hosted",
       "endpoint_url": null,
       "model_path": "mlx-community/chandra-4bit",
-      "backend_type": "mlx",
-      "backend_config": {},
+      "backend_type": "mlx-vlm",
+      "backend_config": {
+        "max_tokens": 512
+      },
       "config": {},
       "created_at": "2025-11-05 13:26:07.130356",
       "updated_at": "2025-11-15 13:07:15.796247"
