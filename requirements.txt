@@ -7,6 +7,7 @@ pydantic-settings==2.5.2
 uvicorn[standard]==0.32.0
 websockets==12.0
 python-dotenv==1.0.1
+click>=8.1.7
 
 # Testing
 pytest==8.3.3
@@ -20,12 +21,12 @@ black==23.11.0
 huggingface-hub==0.34.0
 tqdm==4.66.5
 pillow==10.4.0
-numpy==1.26.4
+numpy>=1.26.4
 sentencepiece==0.2.0
 
 # Model hosting backends (install based on your needs)
 # Option 1: llama-cpp-python (CPU/GPU support, GGUF models)
-llama-cpp-python==0.2.90
+# llama-cpp-python==0.2.90
 
 # Option 2: Transformers + vLLM (High-performance GPU inference)
 transformers==4.55.2
@@ -39,13 +40,13 @@ accelerate==1.1.1
 # flashinfer-python==0.5.1 # Uncomment for installinf FlashInfer (it might be beneficial to vLLM)
 
 # Option 3: MLX (Apple Silicon optimized text generation)
-# mlx==0.20.0
-# mlx-lm==0.19.3
+mlx>=0.20.0
+mlx-lm>=0.19.3
 
 # Option 4: MLX-VLM (Vision-Language Models on Apple Silicon)
-# mlx-vlm==0.1.0
+mlx-vlm>=0.1.0
 
 # Option 5: Reranker backend (document reranking with cross-encoders)
-sentence-transformers==5.1.2
-scikit-learn==1.7.2
-scipy==1.16.3
+sentence-transformers>=5.1.2
+scikit-learn>=1.7.2
+scipy>=1.16.3
