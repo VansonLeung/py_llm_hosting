@@ -37,7 +37,6 @@ function renderContentPart(part, index) {
 export function MessageBubble({ message }) {
   if (!message) return null
   const isUser = message.role === "user"
-  const isAssistant = message.role === "assistant"
   const bubbleClasses = isUser ? "bg-primary text-primary-foreground ml-auto" : "bg-muted"
 
   return (

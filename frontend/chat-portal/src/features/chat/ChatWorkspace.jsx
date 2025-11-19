@@ -127,8 +127,8 @@ export function ChatWorkspace() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4">
-      <div className="rounded-2xl border bg-card/60 p-5">
+    <div className="flex h-full flex-col gap-4 overflow-hidden">
+      <div className="flex-none rounded-2xl border bg-card/60 p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase text-muted-foreground">Conversation</p>
@@ -153,11 +153,11 @@ export function ChatWorkspace() {
         {error && <p className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
       </div>
 
-      <div className="flex-1 rounded-2xl border bg-card/40 p-4">
+      <div className="flex-1 overflow-hidden rounded-2xl border bg-card/40 p-4">
         <ChatMessageList messages={activeConversation?.messages} />
       </div>
 
-      <div className="space-y-3">
+      <div className="flex-none space-y-3">
         {activeConversation ? (
           <ToolingSelector
             tools={tools}

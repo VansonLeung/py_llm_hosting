@@ -1,9 +1,5 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react"
-
-const ThemeContext = createContext({
-  theme: "dark",
-  setTheme: () => {},
-})
+import { useEffect, useMemo, useState } from "react"
+import { ThemeContext } from "@/components/theme-context"
 
 export function ThemeProvider({ children, defaultTheme = "dark", storageKey = "llm-ui-theme" }) {
   const [theme, setTheme] = useState(() => {
@@ -21,8 +17,4 @@ export function ThemeProvider({ children, defaultTheme = "dark", storageKey = "l
   const value = useMemo(() => ({ theme, setTheme }), [theme])
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
-}
-
-export function useTheme() {
-  return useContext(ThemeContext)
 }

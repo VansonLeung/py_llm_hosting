@@ -16,6 +16,7 @@ export const STORAGE_KEYS = {
   ENDPOINTS: "llm-ui-endpoints",
   CONVERSATIONS: "llm-ui-conversations",
   TOOLS: "llm-ui-tools",
+  PERSISTENCE: "llm-ui-persistence",
 }
 
 export const DEFAULT_TOOLS = [

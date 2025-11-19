@@ -82,7 +82,7 @@ export default function AuthGate({ children }) {
             {mode === "login" ? "Need an account? Register" : "Have an account? Login"}
           </Button>
           <p className="text-center text-xs text-muted-foreground">
-            Accounts, conversations, endpoints, and tools all live in localStorage until a backend is connected.
+            Use the persistence toggle in the header to switch between browser storage and the backend API once you log in.
           </p>
         </CardFooter>
       </Card>

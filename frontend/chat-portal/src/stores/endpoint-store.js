@@ -22,7 +22,7 @@ const initialState = {
 
 export const useEndpointStore = create(
   persist(
-    (set, get) => ({
+    (set) => ({
       ...initialState,
       addEndpoint(payload) {
         const endpoint = buildEndpoint(payload)

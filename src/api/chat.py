@@ -18,6 +18,26 @@ class ChatMessage(BaseModel):
     content: Union[str, List[Dict[str, Any]]]  # Allow string or list for multimodal
     tool_calls: Optional[List[Dict[str, Any]]] = None
 
+
+def _message_has_vision_content(message: "ChatMessage") -> bool:
+    """Return True when message content contains image/video blocks."""
+    content = message.content
+    if isinstance(content, list):
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            block_type = str(block.get("type", "")).lower()
+            if block_type in {
+                "image",
+                "image_url",
+                "input_image",
+                "image_file",
+                "video",
+                "input_video",
+            }:
+                return True
+    return False
+
 class ChatCompletionRequest(BaseModel):
     model: str
     messages: List[ChatMessage]
@@ -51,7 +71,7 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
         tools=request.tools,
         temperature=request.temperature,
         max_tokens=request.max_tokens,
-        stream=False
+        stream=request.stream
     )
     
     logger.info(f"Streaming chat completion started for model {request.model}")
@@ -274,8 +294,10 @@ async def handle_self_hosted_chat(server, request: ChatCompletionRequest):
     
     # Check for multimodal content
     has_images = any(
-        isinstance(msg.content, list) for msg in request.messages
+        _message_has_vision_content(msg) for msg in request.messages
     )
+    
+    is_force_no_stream = not request.stream
     
     if has_images and not backend.supports_capability(ModelCapability.VISION):
         error_msg = f"Backend {server.backend_type} does not support vision/multimodal input"
@@ -284,9 +306,12 @@ async def handle_self_hosted_chat(server, request: ChatCompletionRequest):
             status_code=400,
             detail=error_msg
         )
-    
+        
+    if has_images:
+        is_force_no_stream = True
+
     # Handle streaming
-    if request.stream:
+    if request.stream and not is_force_no_stream:
         return StreamingResponse(
             stream_chat_completion(server, request),
             media_type="text/event-stream"

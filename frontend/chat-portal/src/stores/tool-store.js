@@ -14,7 +14,7 @@ const buildTool = (payload) => ({
 
 export const useToolStore = create(
   persist(
-    (set, get) => ({
+    (set) => ({
       tools: DEFAULT_TOOLS,
       mcpTools: DEFAULT_MCP_TOOLS,
       addTool(payload, { isMcp = false } = {}) {

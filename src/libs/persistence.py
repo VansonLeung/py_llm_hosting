@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict, List, Optional
+from typing import Optional
 from pydantic import BaseModel
 
 from ..models.server import LLMServer
@@ -15,18 +15,18 @@ class Persistence:
         if not os.path.exists(self.data_file):
             self._save_data({"servers": [], "mcp_sessions": []})
 
-    def _load_data(self) -> Dict:
+    def _load_data(self) -> dict:
         try:
             with open(self.data_file, 'r') as f:
                 return json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             return {"servers": [], "mcp_sessions": []}
 
-    def _save_data(self, data: Dict):
+    def _save_data(self, data: dict):
         with open(self.data_file, 'w') as f:
             json.dump(data, f, indent=2, default=str)
 
-    def get_servers(self) -> List[LLMServer]:
+    def get_servers(self) -> list[LLMServer]:
         data = self._load_data()
         return [LLMServer(**server) for server in data.get("servers", [])]
 
@@ -60,11 +60,17 @@ class Persistence:
         data["servers"] = servers
         self._save_data(data)
 
+    def set_servers(self, servers: list[LLMServer]):
+        """Replace the entire servers list while preserving other data blocks."""
+        data = self._load_data()
+        data["servers"] = [server.model_dump() for server in servers]
+        self._save_data(data)
+
     def get_server_by_id(self, server_id: str) -> Optional[LLMServer]:
         servers = self.get_servers()
         return next((s for s in servers if s.id == server_id), None)
 
-    def get_mcp_sessions(self) -> List[MCPContext]:
+    def get_mcp_sessions(self) -> list[MCPContext]:
         data = self._load_data()
         return [MCPContext(**session) for session in data.get("mcp_sessions", [])]
 

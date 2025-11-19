@@ -115,7 +115,8 @@ export async function dispatchChat({
       signal,
       onToken,
     })
-  } catch (error) {
+  } catch (streamError) {
+    console.warn("Streaming failed, falling back to non-streaming request", streamError)
     // Fall back to a standard fetch so the UI still works even if streamText fails
     const headers = { ...DEFAULT_HEADERS }
     if (endpoint.apiKey) {
@@ -129,7 +130,7 @@ export async function dispatchChat({
         model,
         messages: normalizedMessages,
         tools: normalizedTools.length ? normalizedTools : undefined,
-        stream: false,
+        stream: true,
         temperature,
         max_tokens: maxOutputTokens,
       }),
@@ -200,13 +201,15 @@ async function streamCompletions({
   while (true) {
     const { value, done } = await reader.read()
     if (done) break
-    buffer += decoder.decode(value, { stream: true })
+    const chunkText = decoder.decode(value, { stream: true }).replace(/\r/g, "\n")
+    buffer += chunkText
 
     buffer = consumeSseBuffer({ buffer, onToken, toolCalls, context })
   }
 
-  if (buffer.trim().length) {
-    processSseEvent({ event: buffer.trim(), onToken, toolCallsRef: toolCalls, context })
+  const remaining = buffer.trim()
+  if (remaining.length) {
+    processSseEvent({ event: remaining, onToken, toolCallsRef: toolCalls, context })
   }
 
   return {
