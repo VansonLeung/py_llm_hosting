@@ -273,7 +273,15 @@
               </label>
               <label>
                 Backend Type
-                <input id="server-backend" />
+                <select id="server-backend">
+                  <option value="">Select backend</option>
+                  <option value="proxy">Proxy (external API)</option>
+                  <option value="llama-cpp">llama.cpp</option>
+                  <option value="transformers">Transformers</option>
+                  <option value="vllm">vLLM</option>
+                  <option value="mlx">MLX</option>
+                  <option value="sentence-transformers">Sentence Transformers</option>
+                </select>
               </label>
               <label>
                 Backend Config (JSON)

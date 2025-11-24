@@ -111,35 +111,28 @@ class SentenceTransformersBackend(ModelBackend):
     ) -> Dict[str, Any]:
         """Generate embeddings using sentence-transformers."""
         if not self.loaded:
-            raise RuntimeError("Model not loaded")
-        
-    async def embed(
-        self,
-        texts: List[str],
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Generate embeddings using sentence-transformers."""
-        if not self.loaded:
-            error_msg = f"Model {self.model_path} is not loaded. Please start the server first."
+            error_msg = (
+                f"Model {self.model_path} is not loaded. Please start the server first."
+            )
             logger.error(error_msg)
             raise RuntimeError(error_msg)
 
         try:
-            import time
-
-            logger.info(f"Generating embeddings for {len(texts)} texts with sentence-transformers")
+            logger.info(
+                "Generating embeddings for %s texts with sentence-transformers",
+                len(texts),
+            )
 
             # Run embedding generation in executor
             loop = asyncio.get_event_loop()
 
             def embed_sync():
                 # Generate embeddings
-                embeddings = self.model.encode(
+                return self.model.encode(
                     texts,
                     normalize_embeddings=self.normalize_embeddings,
                     convert_to_numpy=True
                 )
-                return embeddings
 
             embeddings_array = await loop.run_in_executor(None, embed_sync)
 
@@ -158,6 +151,29 @@ class SentenceTransformersBackend(ModelBackend):
             # Estimate token count (rough approximation)
             total_tokens = sum(len(text.split()) for text in texts) * 2
 
+        except ValueError as exc:
+            error_msg = (
+                "Invalid embedding parameters for model %s. "
+                "Check input texts format and length. Error: %s"
+            )
+            error_msg = error_msg % (self.model_path, exc)
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from exc
+        except RuntimeError as exc:
+            if "out of memory" in str(exc).lower() or "oom" in str(exc).lower():
+                error_msg = (
+                    "Out of memory during embedding generation with model %s. "
+                    "Try processing fewer texts at once. Error: %s"
+                )
+                error_msg = error_msg % (self.model_path, exc)
+            else:
+                error_msg = (
+                    "Runtime error during embedding generation with model %s: %s"
+                )
+                error_msg = error_msg % (self.model_path, exc)
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from exc
+        else:
             return {
                 "object": "list",
                 "data": data,
@@ -168,21 +184,26 @@ class SentenceTransformersBackend(ModelBackend):
                 }
             }
 
-        except ValueError as e:
-            error_msg = f"Invalid embedding parameters for model {self.model_path}. Check input texts format and length. Error: {e}"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
-        except RuntimeError as e:
-            if "out of memory" in str(e).lower() or "oom" in str(e).lower():
-                error_msg = f"Out of memory during embedding generation with model {self.model_path}. Try processing fewer texts at once. Error: {e}"
-            else:
-                error_msg = f"Runtime error during embedding generation with model {self.model_path}: {e}"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
-        except Exception as e:
-            error_msg = f"Unexpected error during embedding generation with model {self.model_path}. Number of texts: {len(texts)}. Error type: {type(e).__name__}, Error: {e}"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
+    def supports_capability(self, capability: ModelCapability) -> bool:
+        """Sentence Transformers backend only provides embeddings."""
+        return capability == ModelCapability.EMBEDDINGS
+
+    async def get_info(self) -> dict[str, Any]:
+        """Return backend metadata for observability endpoints."""
+        return {
+            "backend": ModelBackendType.SENTENCE_TRANSFORMERS.value,
+            "model_path": self.model_path,
+            "loaded": self.loaded,
+            "config": {
+                "device": self.device,
+                "normalize_embeddings": self.normalize_embeddings,
+            },
+            "capabilities": [ModelCapability.EMBEDDINGS.value],
+            "framework": "sentence-transformers",
+        }
 
 # Register the backend
-ModelBackendFactory.register_backend(ModelBackendType.SENTENCE_TRANSFORMERS, SentenceTransformersBackend)
+ModelBackendFactory.register_backend(
+    ModelBackendType.SENTENCE_TRANSFORMERS,
+    SentenceTransformersBackend,
+)
