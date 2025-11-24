@@ -24,6 +24,13 @@ class MLXBackend(ModelBackend):
         self.top_p = kwargs.get("top_p", 1.0)
         self.repetition_penalty = kwargs.get("repetition_penalty", 1.0)
         self.is_thinking_model = kwargs.get("is_thinking_model", False)
+        self._generation_lock: asyncio.Lock | None = None
+
+    def _ensure_generation_lock(self) -> asyncio.Lock:
+        """Create the per-backend generation lock lazily inside the running loop."""
+        if self._generation_lock is None:
+            self._generation_lock = asyncio.Lock()
+        return self._generation_lock
 
     async def load_model(self) -> None:
         """Load the model using MLX."""
@@ -146,6 +153,10 @@ class MLXBackend(ModelBackend):
             import time
             import json
 
+            lock = self._ensure_generation_lock()
+            if lock.locked():
+                logger.info("Another MLX generation is in-flight, queuing this request")
+
             # Apply chat template if available
             if hasattr(self.tokenizer, 'apply_chat_template'):
                 # Try to apply with tools if supported
@@ -182,61 +193,63 @@ class MLXBackend(ModelBackend):
             # Handle streaming
             if stream:
                 async def stream_wrapper():
-                    try:
-                        loop = asyncio.get_event_loop()
+                    async with lock:
+                        try:
+                            loop = asyncio.get_event_loop()
 
-                        # MLX generate function - run in executor
-                        def generate_sync():
-                            return self._generate(
-                                prompt=prompt,
-                                temperature=temperature,
-                                top_p=top_p,
-                                max_tokens=max_tokens,
-                                repetition_penalty=repetition_penalty
-                            )
+                            # MLX generate function - run in executor
+                            def generate_sync():
+                                return self._generate(
+                                    prompt=prompt,
+                                    temperature=temperature,
+                                    top_p=top_p,
+                                    max_tokens=max_tokens,
+                                    repetition_penalty=repetition_penalty
+                                )
 
-                        full_response = await loop.run_in_executor(None, generate_sync)
+                            full_response = await loop.run_in_executor(None, generate_sync)
 
-                        # Check for tool calls
-                        tool_calls = self._extract_tool_calls(full_response) if tools else None
-                        
-                        logger.info(f"Streaming generation completed, response length: {len(full_response)}")
-                        logger.info(f"Tool calls extracted: {tool_calls}")
+                            # Check for tool calls
+                            tool_calls = self._extract_tool_calls(full_response) if tools else None
+                            
+                            logger.info(f"Streaming generation completed, response length: {len(full_response)}")
+                            logger.info(f"Tool calls extracted: {tool_calls}")
 
-                        if tool_calls:
-                            # Yield tool calls as structured data
-                            yield {
-                                "tool_calls": tool_calls,
-                                "content": None
-                            }
-                        else:
-                            # Simulate streaming by yielding words
-                            words = full_response.split()
-                            for i, word in enumerate(words):
-                                if i == 0:
-                                    yield word
-                                else:
-                                    yield " " + word
-                                await asyncio.sleep(0.01)  # Small delay for visual effect
-                    except Exception as e:
-                        error_msg = f"Error during streaming chat generation with model {self.model_path}. Error type: {type(e).__name__}, Error: {e}"
-                        logger.error(error_msg)
-                        raise RuntimeError(error_msg)
+                            if tool_calls:
+                                # Yield tool calls as structured data
+                                yield {
+                                    "tool_calls": tool_calls,
+                                    "content": None
+                                }
+                            else:
+                                # Simulate streaming by yielding words
+                                words = full_response.split()
+                                for i, word in enumerate(words):
+                                    if i == 0:
+                                        yield word
+                                    else:
+                                        yield " " + word
+                                    await asyncio.sleep(0.01)  # Small delay for visual effect
+                        except Exception as e:
+                            error_msg = f"Error during streaming chat generation with model {self.model_path}. Error type: {type(e).__name__}, Error: {e}"
+                            logger.error(error_msg)
+                            raise RuntimeError(error_msg)
 
                 return stream_wrapper()
 
             # Non-streaming
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._generate(
-                    prompt=prompt,
-                    temperature=temperature,
-                    top_p=top_p,
-                    max_tokens=max_tokens,
-                    repetition_penalty=repetition_penalty
+            async with lock:
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: self._generate(
+                        prompt=prompt,
+                        temperature=temperature,
+                        top_p=top_p,
+                        max_tokens=max_tokens,
+                        repetition_penalty=repetition_penalty
+                    )
                 )
-            )
 
             # Count tokens
             prompt_tokens = len(self.tokenizer.encode(prompt))
