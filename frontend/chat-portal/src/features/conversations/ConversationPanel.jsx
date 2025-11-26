@@ -20,7 +20,7 @@ export function ConversationPanel() {
     const payload = {
       title: values.title || `Conversation ${conversations.length + 1}`,
       endpointId: values.endpointId || endpoints.at(0)?.id,
-      model: values.model || endpoints.at(0)?.models?.[0] || "gpt-4o-mini",
+      model: values.model || endpoints.at(0)?.model || "gpt-4o-mini",
     }
     const conversation = createConversation(payload)
     setActiveConversation(conversation.id)

@@ -3,7 +3,7 @@ export const DEFAULT_ENDPOINT = {
   name: "Local LLM Gateway",
   baseUrl: "http://localhost:8000/v1",
   apiKey: "sk-local-placeholder",
-  models: ["gpt-4o-mini"],
+  model: "gpt-4o-mini",
   description: "Default endpoint that points to the local py_llm_hosting instance.",
   supportsVision: true,
   supportsTools: true,

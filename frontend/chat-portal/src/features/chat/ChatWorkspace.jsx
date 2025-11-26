@@ -5,7 +5,7 @@ import { ChatComposer } from "./ChatComposer"
 import { TokenUsageSummary } from "./TokenUsageSummary"
 import { ToolingSelector } from "@/features/tools/ToolingSelector"
 import { useConversationStore, selectConversationById } from "@/stores/conversation-store"
-import { useEndpointStore, selectActiveEndpoint } from "@/stores/endpoint-store"
+import { useEndpointStore } from "@/stores/endpoint-store"
 import { useToolStore } from "@/stores/tool-store"
 import { dispatchChat } from "@/services/chat-service"
 import { Loader2, MessageCirclePlus } from "lucide-react"
@@ -20,7 +20,11 @@ export function ChatWorkspace() {
   const patchMessage = useConversationStore((state) => state.patchMessage)
   const attachTools = useConversationStore((state) => state.attachTools)
   const updateConversation = useConversationStore((state) => state.updateConversation)
-  const activeEndpoint = useEndpointStore(selectActiveEndpoint)
+  const endpoints = useEndpointStore((state) => state.endpoints)
+  const activeEndpointId = useEndpointStore((state) => state.activeEndpointId)
+  const activeEndpointSelection = endpoints.find((endpoint) => endpoint.id === activeEndpointId) || endpoints.at(0) || null
+  const conversationEndpoint = activeConversation ? endpoints.find((endpoint) => endpoint.id === activeConversation.endpointId) : null
+  const activeEndpoint = conversationEndpoint || activeEndpointSelection
   const tools = useToolStore((state) => state.tools)
   const mcpTools = useToolStore((state) => state.mcpTools)
   const [status, setStatus] = useState("idle")
@@ -28,7 +32,7 @@ export function ChatWorkspace() {
 
   const selectedToolIds = activeConversation?.toolIds ?? EMPTY_IDS
   const selectedMcpToolIds = activeConversation?.mcpToolIds ?? EMPTY_IDS
-  const activeModel = activeConversation?.model || activeEndpoint?.models?.[0] || "gpt-4o-mini"
+  const activeModel = activeConversation?.model || activeEndpoint?.model || "gpt-4o-mini"
   const disableSend = !activeEndpoint || status === "pending"
 
   const toolMap = useMemo(() => {
@@ -58,7 +62,7 @@ export function ChatWorkspace() {
   const handleSend = async ({ text, attachments, temperature, maxTokens }) => {
     const conversation = ensureConversation()
     if (!activeEndpoint) {
-      setError("Configure an endpoint before sending messages.")
+      setError("Configure a model before sending messages.")
       return
     }
 
@@ -120,8 +124,8 @@ export function ChatWorkspace() {
   if (!activeEndpoint) {
     return (
       <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed p-10 text-center text-muted-foreground">
-        <p className="text-lg font-semibold">Add an endpoint to begin</p>
-        <p className="mt-2 text-sm">Configure an OpenAI-compatible endpoint so conversations know where to send requests.</p>
+        <p className="text-lg font-semibold">Add a model to begin</p>
+        <p className="mt-2 text-sm">Configure an OpenAI-compatible model so conversations know where to send requests.</p>
       </div>
     )
   }
@@ -134,7 +138,7 @@ export function ChatWorkspace() {
             <p className="text-xs font-semibold uppercase text-muted-foreground">Conversation</p>
             <h2 className="text-xl font-semibold">{activeConversation?.title || "Create a conversation"}</h2>
             <p className="text-sm text-muted-foreground">
-              {activeEndpoint?.name || "Endpoint"} · {activeModel}
+              {activeEndpoint?.name || "Model"} · {activeModel}
             </p>
           </div>
           <TokenUsageSummary usage={activeConversation?.tokenUsage} />

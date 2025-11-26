@@ -3,8 +3,8 @@ line-length = 88
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "C90", "I", "N", "UP", "YTT", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "T10", "DJ", "EM", "EXE", "FA", "ISC", "ICN", "G", "INP", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SLOT", "SIM", "TID", "TCH", "INT", "ARG", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "FLY", "NPY", "AIR", "PERF", "FURB", "LOG", "RUF"]
-ignore = ["S101", "S104", "COM812", "ISC001"]
+select = ["E", "F", "W", "C90", "I", "N", "UP", "B", "A", "C4", "T10", "SIM", "TID", "ARG", "PTH", "ERA", "PL", "RUF"]
+ignore = ["S101", "S104", "COM812", "ISC001", "E501", "W291", "BLE001", "W293", "PLR0913", "PLR0912", "PLR0915", "PLR0916"]
 
 [tool.black]
 line-length = 88

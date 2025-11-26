@@ -135,21 +135,30 @@ class SentenceTransformersBackend(ModelBackend):
                 )
 
             embeddings_array = await loop.run_in_executor(None, embed_sync)
+            
+            logger.info("...")
 
             # Convert to list format
             embeddings_list = embeddings_array.tolist()
 
+            logger.info("...")
+
             # Format as OpenAI-compatible response
             data = []
             for i, embedding in enumerate(embeddings_list):
+                print(f"embedding length: {len(embedding)}")
                 data.append({
                     "object": "embedding",
                     "embedding": embedding,
                     "index": i
                 })
 
+            logger.info("...")
+
             # Estimate token count (rough approximation)
             total_tokens = sum(len(text.split()) for text in texts) * 2
+
+            logger.info("...")
 
         except ValueError as exc:
             error_msg = (

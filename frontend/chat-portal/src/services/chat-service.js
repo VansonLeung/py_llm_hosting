@@ -3,6 +3,10 @@ import { buildUsageFromResponse } from "@/lib/tokens"
 const DEFAULT_HEADERS = { "Content-Type": "application/json" }
 const EMPTY_USAGE = { prompt: 0, completion: 0, total: 0 }
 
+function shouldUseVisionFormat(endpoint) {
+  return Boolean(endpoint?.supportsVision)
+}
+
 function stringifyContent(content) {
   if (content == null) return ""
   if (typeof content === "string") return content
@@ -61,17 +65,33 @@ function normalizeContentParts(content) {
   return text ? [{ type: "text", text }] : []
 }
 
-function mapMessage(message) {
+function mapMessage(message, { isVisionModel = false } = {}) {
   if (!message) return null
-  const parts = normalizeContentParts(message.content)
-  const attachmentParts = (message.attachments || []).map(attachmentToContentPart).filter(Boolean)
-  const content = [...parts, ...attachmentParts]
 
-  if (!content.length) {
-    return { role: message.role, content: [{ type: "text", text: "" }] }
+  if (isVisionModel) {
+    const parts = normalizeContentParts(message.content)
+    const attachmentParts = (message.attachments || []).map(attachmentToContentPart).filter(Boolean)
+    const content = [...parts, ...attachmentParts]
+
+    if (!content.length) {
+      return { role: message.role, content: [{ type: "text", text: "" }] }
+    }
+
+    return { role: message.role, content }
   }
 
-  return { role: message.role, content }
+  const baseText = stringifyContent(message.content)
+  const attachmentNotes = (message.attachments || [])
+    .map((attachment) => {
+      if (!attachment?.dataUrl) return ""
+      const mediaType = parseMediaType(attachment.dataUrl, attachment.type || "application/octet-stream")
+      const label = attachment.name || attachment.type || mediaType
+      return `[Attachment: ${label} - ${mediaType}]`
+    })
+    .filter(Boolean)
+
+  const combinedText = [baseText, ...attachmentNotes].filter(Boolean).join("\n\n")
+  return { role: message.role, content: combinedText || "" }
 }
 
 function buildToolPayload(tool, { isMcp = false } = {}) {
@@ -101,11 +121,25 @@ export async function dispatchChat({
     throw new Error("Select a model endpoint before sending messages")
   }
 
-  const normalizedMessages = messages.map(mapMessage).filter(Boolean)
+  const isVisionModel = shouldUseVisionFormat(endpoint)
+  const normalizedMessages = messages.map((message) => mapMessage(message, { isVisionModel })).filter(Boolean)
   const normalizedTools = tools.map((tool) => buildToolPayload(tool.tool, { isMcp: tool.isMcp })).filter(Boolean)
+  const shouldStream = normalizedTools.length === 0
 
   try {
-    return await streamCompletions({
+    if (shouldStream) {
+      return await streamCompletions({
+        endpoint,
+        model,
+        messages: normalizedMessages,
+        tools: normalizedTools,
+        temperature,
+        maxOutputTokens,
+        signal,
+        onToken,
+      })
+    }
+    return await requestCompletions({
       endpoint,
       model,
       messages: normalizedMessages,
@@ -113,45 +147,18 @@ export async function dispatchChat({
       temperature,
       maxOutputTokens,
       signal,
-      onToken,
     })
   } catch (streamError) {
     console.warn("Streaming failed, falling back to non-streaming request", streamError)
-    // Fall back to a standard fetch so the UI still works even if streamText fails
-    const headers = { ...DEFAULT_HEADERS }
-    if (endpoint.apiKey) {
-      headers.Authorization = `Bearer ${endpoint.apiKey}`
-    }
-
-    const response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model,
-        messages: normalizedMessages,
-        tools: normalizedTools.length ? normalizedTools : undefined,
-        stream: true,
-        temperature,
-        max_tokens: maxOutputTokens,
-      }),
+    return await requestCompletions({
+      endpoint,
+      model,
+      messages: normalizedMessages,
+      tools: normalizedTools,
+      temperature,
+      maxOutputTokens,
       signal,
     })
-
-    if (!response.ok) {
-      throw new Error(`Chat request failed: ${response.status} ${response.statusText}`)
-    }
-
-    const data = await response.json()
-    const choice = data.choices?.[0]
-    const rawContent = choice?.message?.content ?? data.output ?? ""
-    const normalizedText = stringifyContent(rawContent)
-    return {
-      text: normalizedText,
-      usage: buildUsageFromResponse(data.usage) || EMPTY_USAGE,
-      toolCalls: choice?.message?.tool_calls || [],
-      finishReason: choice?.finish_reason || data.finish_reason || null,
-      raw: data,
-    }
   }
 }
 
@@ -218,6 +225,49 @@ async function streamCompletions({
     toolCalls,
     finishReason: context.finishReason,
     raw: null,
+  }
+}
+
+async function requestCompletions({ endpoint, model, messages, tools, temperature, maxOutputTokens, signal }) {
+  const headers = buildAuthHeaders(endpoint)
+  const response = await fetch(buildCompletionsUrl(endpoint.baseUrl), {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      messages,
+      tools: tools.length ? tools : undefined,
+      stream: false,
+      temperature,
+      max_tokens: maxOutputTokens,
+    }),
+    signal,
+  })
+
+  if (!response.ok) {
+    throw new Error(`Chat request failed: ${response.status} ${response.statusText}`)
+  }
+
+  const data = await response.json()
+  return buildResponsePayload(data)
+}
+
+function buildResponsePayload(data) {
+  const choice = data.choices?.[0]
+  const rawContent = choice?.message?.content ?? data.output ?? ""
+  const normalizedText = stringifyContent(rawContent)
+  const usage = buildUsageFromResponse(data.usage) || EMPTY_USAGE
+  const messageToolCalls = choice?.message?.tool_calls || []
+  const executedToolCalls = data.tool_execution || data.executed_tool_calls || []
+  const combinedToolCalls = messageToolCalls.length ? messageToolCalls : executedToolCalls
+
+  return {
+    text: normalizedText,
+    usage,
+    toolCalls: combinedToolCalls || [],
+    toolExecution: executedToolCalls || [],
+    finishReason: choice?.finish_reason || data.finish_reason || null,
+    raw: data,
   }
 }
 

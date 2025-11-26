@@ -5,10 +5,20 @@ Apple Silicon optimized inference using MLX framework.
 Supports text generation models on Mac with Apple Silicon.
 """
 
-from typing import Dict, Any, List, Optional, AsyncIterator
-from src.models.backend import ModelBackend, ModelCapability, ModelBackendType, ModelBackendFactory
-from src.libs.logging import logger
 import asyncio
+import re
+
+from typing import Dict, Any, List, Optional, AsyncIterator, NamedTuple
+
+from src.libs.logging import logger
+from src.models.backend import ModelBackend, ModelCapability, ModelBackendType, ModelBackendFactory
+
+
+class GenerationConfig(NamedTuple):
+    max_tokens: int
+    temperature: float
+    top_p: float
+    repetition_penalty: float
 
 
 class MLXBackend(ModelBackend):
@@ -35,8 +45,7 @@ class MLXBackend(ModelBackend):
     async def load_model(self) -> None:
         """Load the model using MLX."""
         try:
-            import mlx.core as mx
-            from mlx_lm import load, generate
+            from mlx_lm import load
 
             logger.info(f"Loading model from {self.model_path} with MLX...")
 
@@ -60,15 +69,15 @@ class MLXBackend(ModelBackend):
         except ImportError as e:
             error_msg = f"MLX not installed or not on Apple Silicon. Install with: pip install mlx mlx-lm. Error: {e}"
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            raise RuntimeError(error_msg) from e
         except FileNotFoundError as e:
             error_msg = f"Model not found at path: {self.model_path}. The model will be downloaded automatically on first use. Error: {e}"
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            raise RuntimeError(error_msg) from e
         except ValueError as e:
             error_msg = f"Invalid MLX configuration for model {self.model_path}. Check trust_remote_code ({self.trust_remote_code}). Error: {e}"
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            raise RuntimeError(error_msg) from e
         except RuntimeError as e:
             if "apple silicon" in str(e).lower() or "m1" in str(e).lower() or "m2" in str(e).lower() or "m3" in str(e).lower():
                 error_msg = f"MLX requires Apple Silicon (M1/M2/M3) Mac. This appears to be running on non-Apple Silicon hardware. Error: {e}"
@@ -77,11 +86,11 @@ class MLXBackend(ModelBackend):
             else:
                 error_msg = f"Runtime error loading model {self.model_path}: {e}"
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            raise RuntimeError(error_msg) from e
         except Exception as e:
             error_msg = f"Unexpected error loading model {self.model_path} with MLX backend. Model path: {self.model_path}, Config: trust_remote_code={self.trust_remote_code}. Error type: {type(e).__name__}, Error: {e}"
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            raise RuntimeError(error_msg) from e
 
     async def unload_model(self) -> None:
         """Unload the model from memory."""
@@ -101,7 +110,8 @@ class MLXBackend(ModelBackend):
         **extra_kwargs  # Catch any extra kwargs
     ):
         """Internal generate method with proper sampler and logits processors."""
-        from mlx_lm import generate as mlx_lm_generate, sample_utils
+        from mlx_lm import generate as mlx_lm_generate
+        from mlx_lm import sample_utils
         
         if extra_kwargs:
             logger.warning(f"_generate received unexpected kwargs: {extra_kwargs}")
@@ -113,7 +123,7 @@ class MLXBackend(ModelBackend):
             repetition_penalty=repetition_penalty
         )
         
-        logger.info(f"Created sampler and logits_processors")
+        logger.info("Created sampler and logits_processors")
         
         # Only pass the parameters that mlx_lm_generate() expects
         result = mlx_lm_generate(
@@ -132,15 +142,15 @@ class MLXBackend(ModelBackend):
 
     async def generate_chat(
         self,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None,
-        max_tokens: Optional[int] = None,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        max_tokens: int | None = None,
         temperature: float = 0.7,
         top_p: float = 1.0,
         repetition_penalty: float = 1.0,
         stream: bool = False,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate chat completion with optional tools support."""
         logger.info(f"generate_chat called with: stream={stream}, temperature={temperature}, tools={tools}, kwargs={kwargs}")
 
@@ -151,7 +161,6 @@ class MLXBackend(ModelBackend):
 
         try:
             import time
-            import json
 
             lock = self._ensure_generation_lock()
             if lock.locked():
@@ -222,18 +231,17 @@ class MLXBackend(ModelBackend):
                                     "content": None
                                 }
                             else:
-                                # Simulate streaming by yielding words
-                                words = full_response.split()
-                                for i, word in enumerate(words):
-                                    if i == 0:
-                                        yield word
-                                    else:
-                                        yield " " + word
-                                    await asyncio.sleep(0.01)  # Small delay for visual effect
+                                # Simulate streaming while preserving whitespace
+                                for chunk in re.finditer(r"\s+|\S+", full_response):
+                                    piece = chunk.group(0)
+                                    if not piece:
+                                        continue
+                                    yield piece
+                                    await asyncio.sleep(0.01)  # Short UX delay
                         except Exception as e:
                             error_msg = f"Error during streaming chat generation with model {self.model_path}. Error type: {type(e).__name__}, Error: {e}"
                             logger.error(error_msg)
-                            raise RuntimeError(error_msg)
+                            raise RuntimeError(error_msg) from e
 
                 return stream_wrapper()
 
@@ -301,20 +309,20 @@ class MLXBackend(ModelBackend):
         except ValueError as e:
             error_msg = f"Invalid chat generation parameters for model {self.model_path}. Check max_tokens ({max_tokens}), temperature ({temperature}), top_p ({top_p}), repetition_penalty ({repetition_penalty}). Error: {e}"
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            raise RuntimeError(error_msg) from e
         except RuntimeError as e:
             if "out of memory" in str(e).lower() or "oom" in str(e).lower():
                 error_msg = f"Out of memory during chat generation with model {self.model_path}. Try reducing max_tokens (current: {max_tokens}). Error: {e}"
             else:
                 error_msg = f"Runtime error during chat generation with model {self.model_path}: {e}"
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            raise RuntimeError(error_msg) from e
         except Exception as e:
             error_msg = f"Unexpected error during chat generation with model {self.model_path}. Messages: {len(messages)} message(s), max_tokens: {max_tokens}, temperature: {temperature}. Error type: {type(e).__name__}, Error: {e}"
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            raise RuntimeError(error_msg) from e
     
-    def _format_prompt_with_tools(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> str:
+    def _format_prompt_with_tools(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None) -> str:
         """Format prompt with tools information."""
         import json
         
@@ -333,7 +341,7 @@ class MLXBackend(ModelBackend):
         tools_description += '{"tool_calls": [{"name": "tool_name", "arguments": {...}}]}\n\n'
         
         # Insert tools description as system message
-        formatted_messages = [{"role": "system", "content": tools_description}] + messages
+        formatted_messages = [{"role": "system", "content": tools_description}, *messages]
         
         # Apply chat template or simple formatting
         if hasattr(self.tokenizer, 'apply_chat_template'):
@@ -343,12 +351,13 @@ class MLXBackend(ModelBackend):
                     tokenize=False,
                     add_generation_prompt=True
                 )
-            except:
+            except Exception as e:
+                logger.warning(f"Failed to apply chat template with tools, falling back to simple formatting: {e}")
                 pass
         
         return "\n".join([f"{m['role']}: {m['content']}" for m in formatted_messages])
     
-    def _extract_tool_calls(self, text: str) -> Optional[List[Dict[str, Any]]]:
+    def _extract_tool_calls(self, text: str) -> list[dict[str, Any]] | None:
         """Extract tool calls from generated text."""
         import json
         import re
@@ -367,6 +376,7 @@ class MLXBackend(ModelBackend):
                 formatted_calls = []
                 for i, call in enumerate(tool_calls):
                     formatted_calls.append({
+                        "index": i,
                         "id": f"call_{int(time.time())}_{i}",
                         "type": "function",
                         "function": {
@@ -380,7 +390,7 @@ class MLXBackend(ModelBackend):
                 pass
         
         # Pattern 2: XML-style tags
-        xml_pattern = r'<tool_call>(.*?)</tool_call>'
+        xml_pattern = r"<tool_call>(.*?)</tool_call>"
         matches = re.findall(xml_pattern, text, re.DOTALL)
         
         if matches:
@@ -389,6 +399,7 @@ class MLXBackend(ModelBackend):
                 try:
                     call_data = json.loads(match_text)
                     formatted_calls.append({
+                        "index": i,
                         "id": f"call_{int(time.time())}_{i}",
                         "type": "function",
                         "function": {
@@ -403,7 +414,7 @@ class MLXBackend(ModelBackend):
         
         return None
     
-    def _extract_thinking(self, text: str) -> tuple[Optional[str], str]:
+    def _extract_thinking(self, text: str) -> tuple[str | None, str]:
         """
         Extract thinking/reasoning content from generated text.
         
@@ -445,9 +456,8 @@ class MLXBackend(ModelBackend):
 
     async def embed(
         self,
-        texts: List[str],
-        **kwargs
-    ) -> Dict[str, Any]:
+        texts: list[str]
+    ) -> dict[str, Any]:
         """Generate embeddings using MLX."""
         if not self.loaded:
             error_msg = f"Model {self.model_path} is not loaded. Please start the server first."
@@ -456,8 +466,6 @@ class MLXBackend(ModelBackend):
 
         try:
             import mlx.core as mx
-            import time
-
             logger.info(f"Generating embeddings for {len(texts)} texts with MLX")
 
             # Check if model supports embeddings
@@ -522,25 +530,25 @@ class MLXBackend(ModelBackend):
         except ValueError as e:
             error_msg = f"Invalid embedding parameters for model {self.model_path}. Check input texts format. Error: {e}"
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            raise RuntimeError(error_msg) from e
         except RuntimeError as e:
             if "out of memory" in str(e).lower() or "oom" in str(e).lower():
                 error_msg = f"Out of memory during embedding generation with model {self.model_path}. Try processing fewer texts at once. Error: {e}"
             else:
                 error_msg = f"Runtime error during embedding generation with model {self.model_path}: {e}"
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            raise RuntimeError(error_msg) from e
         except Exception as e:
             error_msg = f"Unexpected error during embedding generation with model {self.model_path}. Number of texts: {len(texts)}. Error type: {type(e).__name__}, Error: {e}"
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            raise RuntimeError(error_msg) from e
 
     def supports_capability(self, capability: ModelCapability) -> bool:
         """Check if backend supports a capability."""
         # MLX supports both text generation and embeddings
         return capability in [ModelCapability.TEXT_GENERATION, ModelCapability.EMBEDDINGS]
 
-    async def get_info(self) -> Dict[str, Any]:
+    async def get_info(self) -> dict[str, Any]:
         """Get backend information."""
         return {
             "backend": "mlx",

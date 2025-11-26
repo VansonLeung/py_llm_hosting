@@ -9,7 +9,7 @@ const defaultForm = {
   name: "",
   baseUrl: "",
   apiKey: "",
-  models: "gpt-4o-mini",
+  model: "gpt-4o-mini",
   supportsVision: true,
   supportsTools: true,
   notes: "",
@@ -19,7 +19,6 @@ function EndpointFormFields({ initialValues, onSubmit, onCancel }) {
   const [form, setForm] = useState(() => ({
     ...defaultForm,
     ...initialValues,
-    models: initialValues?.models?.join(", ") || defaultForm.models,
   }))
 
   const handleChange = (event) => {
@@ -31,7 +30,7 @@ function EndpointFormFields({ initialValues, onSubmit, onCancel }) {
     event.preventDefault()
     onSubmit?.({
       ...form,
-      models: form.models.split(",").map((value) => value.trim()).filter(Boolean),
+      model: form.model.trim() || defaultForm.model,
     })
   }
 
@@ -57,14 +56,8 @@ function EndpointFormFields({ initialValues, onSubmit, onCancel }) {
         <Input id="apiKey" name="apiKey" value={form.apiKey} onChange={handleChange} placeholder="sk-..." />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="models">Models (comma separated)</Label>
-        <Input
-          id="models"
-          name="models"
-          value={form.models}
-          onChange={handleChange}
-          placeholder="gpt-4o-mini, gpt-4o-mini-vision"
-        />
+        <Label htmlFor="model">Model identifier</Label>
+        <Input id="model" name="model" value={form.model} onChange={handleChange} placeholder="gpt-4o-mini" required />
       </div>
       <div className="flex items-center justify-between rounded-md border p-3">
         <div>
@@ -88,7 +81,7 @@ function EndpointFormFields({ initialValues, onSubmit, onCancel }) {
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit">{initialValues ? "Save changes" : "Add endpoint"}</Button>
+        <Button type="submit">{initialValues ? "Save changes" : "Add model"}</Button>
       </DialogFooter>
     </form>
   )
@@ -99,8 +92,8 @@ export function EndpointForm({ open, onOpenChange, initialValues, onSubmit }) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{initialValues ? "Edit endpoint" : "Add endpoint"}</DialogTitle>
-          <DialogDescription>Provide the API base URL and optional API key for your OpenAI-compatible backend.</DialogDescription>
+          <DialogTitle>{initialValues ? "Edit model" : "Add model"}</DialogTitle>
+          <DialogDescription>Provide the API base URL, credentials, and model metadata for your OpenAI-compatible backend.</DialogDescription>
         </DialogHeader>
         <EndpointFormFields
           key={initialValues?.id || "create"}

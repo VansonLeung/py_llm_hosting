@@ -28,6 +28,23 @@ npm run dev
 
 The portal authenticates locally (browser storage), lets you create/manage endpoints, attach tools or MCP connectors, and run multimodal chats against any OpenAI-compatible server (including this repo's API). All conversation history, tooling selections, and credentials stay inside your browser unless you wire up a remote backend.
 
+## 🧰 Tool Execution Microservice
+
+Tool calls (for example, `websearch`) now run inside a dedicated FastAPI microservice located in `tool_service/`. Run it alongside the main API:
+
+```bash
+cd tool_service
+uvicorn tool_service.app.main:app --port 9001
+```
+
+Point the primary API at the microservice by setting `LLM_TOOL_SERVICE_URL` (or `TOOL_SERVICE_URL`):
+
+```bash
+export LLM_TOOL_SERVICE_URL="http://localhost:9001"
+```
+
+The microservice exposes `POST /api/v1/tool-executions` and `GET /health`. See `tool_service/README.md` for full details.
+
 ## 🛠️ Supported Backends
 
 | Backend | Description | Best For |

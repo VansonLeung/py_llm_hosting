@@ -8,7 +8,7 @@ const buildEndpoint = (payload = {}) => ({
   name: payload.name || "Untitled Endpoint",
   baseUrl: payload.baseUrl || "",
   apiKey: payload.apiKey || "",
-  models: payload.models || ["gpt-4o-mini"],
+  model: payload.model || payload.models?.[0] || "gpt-4o-mini",
   supportsVision: payload.supportsVision ?? true,
   supportsTools: payload.supportsTools ?? true,
   notes: payload.notes || "",
@@ -57,6 +57,20 @@ export const useEndpointStore = create(
     {
       name: STORAGE_KEYS.ENDPOINTS,
       storage: browserStorage(),
+      version: 2,
+      migrate: (persistedState, version) => {
+        if (!persistedState) return persistedState
+        if (version < 2 && Array.isArray(persistedState.endpoints)) {
+          return {
+            ...persistedState,
+            endpoints: persistedState.endpoints.map((endpoint) => ({
+              ...endpoint,
+              model: endpoint.model || endpoint.models?.[0] || "gpt-4o-mini",
+            })),
+          }
+        }
+        return persistedState
+      },
     }
   )
 )

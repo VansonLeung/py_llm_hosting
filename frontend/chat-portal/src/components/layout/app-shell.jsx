@@ -13,7 +13,7 @@ export function AppShell({ user, onLogout, sidebar, children }) {
         <div className="flex w-full items-center justify-between px-6 py-4">
           <div>
             <p className="text-lg font-semibold">LLM Control Center</p>
-            <p className="text-sm text-muted-foreground">Manage conversations, endpoints, tools, and MCP connectors</p>
+            <p className="text-sm text-muted-foreground">Manage conversations, models, tools, and MCP connectors</p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-4">
             <PersistenceModeToggle />

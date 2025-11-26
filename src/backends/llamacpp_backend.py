@@ -434,6 +434,7 @@ class LlamaCppBackend(ModelBackend):
                 formatted_calls = []
                 for i, call in enumerate(tool_calls):
                     formatted_calls.append({
+                        "index": i,
                         "id": f"call_{int(time.time())}_{i}",
                         "type": "function",
                         "function": {
@@ -458,6 +459,7 @@ class LlamaCppBackend(ModelBackend):
                 try:
                     call_data = json.loads(match_text)
                     formatted_calls.append({
+                        "index": i,
                         "id": f"call_{int(time.time())}_{i}",
                         "type": "function",
                         "function": {
@@ -483,6 +485,7 @@ class LlamaCppBackend(ModelBackend):
                     # Try to parse as JSON
                     args = json.loads(f"{{{args_str}}}")
                     formatted_calls.append({
+                        "index": i,
                         "id": f"call_{int(time.time())}_{i}",
                         "type": "function",
                         "function": {

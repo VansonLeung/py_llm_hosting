@@ -32,7 +32,7 @@ export function EndpointPanel() {
   }
 
   const handleDelete = (endpoint) => {
-    if (window.confirm(`Remove endpoint "${endpoint.name}"?`)) {
+    if (window.confirm(`Remove model "${endpoint.name}"?`)) {
       removeEndpoint(endpoint.id)
     }
   }
@@ -40,12 +40,12 @@ export function EndpointPanel() {
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold uppercase text-muted-foreground">Endpoints</p>
+        <p className="text-sm font-semibold uppercase text-muted-foreground">Models</p>
         <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)}>
           Add
         </Button>
       </div>
-      <Input placeholder="Search endpoints" value={search} onChange={(event) => setSearch(event.target.value)} />
+      <Input placeholder="Search models" value={search} onChange={(event) => setSearch(event.target.value)} />
       <ScrollArea className="flex-1 pr-2">
         <div className="space-y-3">
           {filtered.map((endpoint) => (
@@ -57,7 +57,7 @@ export function EndpointPanel() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Button size="sm" variant={endpoint.id === activeEndpointId ? "default" : "outline"} onClick={() => setActiveEndpoint(endpoint.id)}>
-                    {endpoint.id === activeEndpointId ? "Active" : "Select"}
+                    {endpoint.id === activeEndpointId ? "Active" : "Use"}
                   </Button>
                   <Button size="icon" variant="ghost" onClick={() => { setEditing(endpoint); setDialogOpen(true) }}>
                     <Edit3 className="h-4 w-4" />
@@ -68,11 +68,11 @@ export function EndpointPanel() {
                 </div>
               </div>
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                {endpoint.models?.map((model) => (
-                  <Badge key={model} variant="outline">
-                    {model}
-                  </Badge>
-                ))}
+                <Badge variant="outline">{endpoint.model}</Badge>
+                <Badge variant={endpoint.supportsVision ? "secondary" : "outline"}>
+                  {endpoint.supportsVision ? "Vision" : "Text only"}
+                </Badge>
+                {endpoint.supportsTools && <Badge variant="secondary">Tools</Badge>}
               </div>
               <p className="mt-2 text-xs text-muted-foreground">API key: {endpoint.apiKey ? maskSecret(endpoint.apiKey) : "—"}</p>
             </div>

@@ -1,22 +1,27 @@
+import json
+import time
+import uuid
+from collections.abc import AsyncIterator
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any, Union, AsyncIterator
-from src.services.proxy import proxy_request
+
 from src.libs.formatters import format_chat_response
 from src.libs.logging import logger
-from src.models.server import ServerMode
 from src.models.backend import ModelCapability
-import time
-import uuid
-import json
+from src.models.server import ServerMode
+from src.services.proxy import proxy_request
+from src.services.tools import handle_tool_calls
 
 router = APIRouter()
 
 class ChatMessage(BaseModel):
     role: str
-    content: Union[str, List[Dict[str, Any]]]  # Allow string or list for multimodal
-    tool_calls: Optional[List[Dict[str, Any]]] = None
+    content: str | list[dict[str, Any]]  # Allow string or list for multimodal
+    tool_calls: list[dict[str, Any]] | None = None
+    tool_call_id: str | None = None
 
 
 def _message_has_vision_content(message: "ChatMessage") -> bool:
@@ -40,31 +45,38 @@ def _message_has_vision_content(message: "ChatMessage") -> bool:
 
 class ChatCompletionRequest(BaseModel):
     model: str
-    messages: List[ChatMessage]
-    temperature: Optional[float] = 1.0
-    max_tokens: Optional[int] = None
-    tools: Optional[List[Dict[str, Any]]] = None
+    messages: list[ChatMessage]
+    temperature: float | None = 1.0
+    max_tokens: int | None = None
+    tools: list[dict[str, Any]] | None = None
     stream: bool = False
 
 
-async def stream_chat_completion(server, request: ChatCompletionRequest) -> AsyncIterator[str]:
+async def stream_chat_completion(  # noqa: PLR0912, PLR0915, C901
+    server,
+    request: ChatCompletionRequest,
+) -> AsyncIterator[str]:
     """Stream chat completion chunks in SSE format."""
     from src.services.model_manager import model_manager
-    
+
     # Load model if not already loaded
     backend = model_manager.get_backend(server.id)
     if backend is None:
         backend = await model_manager.load_model(server)
-    
+
     # Convert messages to format expected by backend
-    messages = [
-        {"role": msg.role, "content": msg.content}
-        for msg in request.messages
-    ]
-    
+    messages = []
+    for msg in request.messages:
+        payload = {"role": msg.role, "content": msg.content}
+        if msg.tool_calls:
+            payload["tool_calls"] = msg.tool_calls
+        if msg.tool_call_id:
+            payload["tool_call_id"] = msg.tool_call_id
+        messages.append(payload)
+
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
     created = int(time.time())
-    
+
     # Generate streaming response
     response_dict = await backend.generate_chat(
         messages=messages,
@@ -73,43 +85,43 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
         max_tokens=request.max_tokens,
         stream=request.stream
     )
-    
+
     logger.info(f"Streaming chat completion started for model {request.model}")
     logger.info(f"Backend response type: {type(response_dict)}")
     logger.info(f"Backend response content: {response_dict}")
-    
+
     thinking_sent = False
     finish_reason = "stop"
-    
+
     # If backend returns a stream/generator
-    if hasattr(response_dict, '__aiter__'):
+    if hasattr(response_dict, "__aiter__"):
         async for token in response_dict:
             # Handle both string tokens and dict with tool_calls/thinking
             logger.info(f"Streaming token: {token}")
-            
+
             if isinstance(token, dict):
                 delta = {}
-                
+
                 # Handle tool calls in streaming
                 if "tool_calls" in token:
                     delta["tool_calls"] = token["tool_calls"]
                     finish_reason = "tool_calls"
-                
+
                 # Handle thinking content in streaming
                 if "thinking" in token and not thinking_sent:
                     delta["thinking"] = token["thinking"]
                     thinking_sent = True
-                
+
                 # Handle regular content
                 if "content" in token:
                     delta["content"] = token["content"]
-                
+
                 # If nothing specific, use the whole dict
                 if not delta:
                     delta = token
             else:
                 delta = {"content": token}
-            
+
             chunk = {
                 "id": chunk_id,
                 "object": "chat.completion.chunk",
@@ -124,7 +136,7 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
                 ]
             }
             yield f"data: {json.dumps(chunk)}\n\n"
-    
+
     # If backend returns dict with 'stream' generator
     elif isinstance(response_dict, dict) and "stream" in response_dict:
         logger.info("Backend returned 'stream' in response dict")
@@ -145,75 +157,56 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
                 ]
             }
             yield f"data: {json.dumps(chunk)}\n\n"
-    
-    # If backend doesn't support streaming, fall back to single response
-    else:
-        if isinstance(response_dict, dict) and "choices" in response_dict:
-            # Extract content from OpenAI format
-            message = response_dict["choices"][0]["message"]
-            content = message.get("content", "")
-            tool_calls = message.get("tool_calls")
-            thinking = message.get("thinking")
 
-            logger.info("Backend returned full OpenAI response dict")
-            logger.info(f"Extracted content length: {len(content) if content else 0}")
-            logger.info(f"Extracted tool_calls: {tool_calls}")
-            logger.info(f"Extracted thinking: {thinking}")
-            
-            # Send thinking first if present
-            if thinking:
-                chunk = {
-                    "id": chunk_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": request.model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"thinking": thinking},
-                            "finish_reason": None
-                        }
-                    ]
-                }
-                yield f"data: {json.dumps(chunk)}\n\n"
-            
-            # Send tool calls if present
-            if tool_calls:
-                chunk = {
-                    "id": chunk_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": request.model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"tool_calls": tool_calls},
-                            "finish_reason": None
-                        }
-                    ]
-                }
-                yield f"data: {json.dumps(chunk)}\n\n"
-            
-            # Send content if present
-            if content:
-                chunk = {
-                    "id": chunk_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": request.model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"content": content},
-                            "finish_reason": None
-                        }
-                    ]
-                }
-                yield f"data: {json.dumps(chunk)}\n\n"
-        elif isinstance(response_dict, dict):
-            content = response_dict.get("text", "")
-            
-            # Send as single chunk
+    # If backend doesn't support streaming, fall back to single response
+    elif isinstance(response_dict, dict) and "choices" in response_dict:
+        # Extract content from OpenAI format
+        message = response_dict["choices"][0]["message"]
+        content = message.get("content", "")
+        tool_calls = message.get("tool_calls")
+        thinking = message.get("thinking")
+
+        logger.info("Backend returned full OpenAI response dict")
+        logger.info(f"Extracted content length: {len(content) if content else 0}")
+        logger.info(f"Extracted tool_calls: {tool_calls}")
+        logger.info(f"Extracted thinking: {thinking}")
+
+        # Send thinking first if present
+        if thinking:
+            chunk = {
+                "id": chunk_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": request.model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"thinking": thinking},
+                        "finish_reason": None
+                    }
+                ]
+            }
+            yield f"data: {json.dumps(chunk)}\n\n"
+
+        # Send tool calls if present
+        if tool_calls:
+            chunk = {
+                "id": chunk_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": request.model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"tool_calls": tool_calls},
+                        "finish_reason": None
+                    }
+                ]
+            }
+            yield f"data: {json.dumps(chunk)}\n\n"
+
+        # Send content if present
+        if content:
             chunk = {
                 "id": chunk_id,
                 "object": "chat.completion.chunk",
@@ -228,27 +221,45 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
                 ]
             }
             yield f"data: {json.dumps(chunk)}\n\n"
-        else:
-            content = str(response_dict)
-            
-            # Send as single chunk
-            chunk = {
-                "id": chunk_id,
-                "object": "chat.completion.chunk",
-                "created": created,
-                "model": request.model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "delta": {"content": content},
-                        "finish_reason": None
-                    }
-                ]
-            }
-            yield f"data: {json.dumps(chunk)}\n\n"
-            
+    elif isinstance(response_dict, dict):
+        content = response_dict.get("text", "")
+
+        # Send as single chunk
+        chunk = {
+            "id": chunk_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": request.model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": content},
+                    "finish_reason": None
+                }
+            ]
+        }
+        yield f"data: {json.dumps(chunk)}\n\n"
+    else:
+        content = str(response_dict)
+
+        # Send as single chunk
+        chunk = {
+            "id": chunk_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": request.model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": content},
+                    "finish_reason": None
+                }
+            ]
+        }
+        yield f"data: {json.dumps(chunk)}\n\n"
+
     logger.info("Streaming chat completion finished")
-    
+
     # Send final chunk with finish_reason
     final_chunk = {
         "id": chunk_id,
@@ -267,46 +278,57 @@ async def stream_chat_completion(server, request: ChatCompletionRequest) -> Asyn
     yield "data: [DONE]\n\n"
 
 
-async def handle_self_hosted_chat(server, request: ChatCompletionRequest):
+async def handle_self_hosted_chat(server, request: ChatCompletionRequest):  # noqa: C901, PLR0912
     """Handle chat completion using self-hosted model."""
     from src.services.model_manager import model_manager
-    from src.libs.logging import logger
-    
+
     # Load model if not already loaded
     backend = model_manager.get_backend(server.id)
     if backend is None:
         try:
-            logger.info(f"Loading model {server.model_name} (backend: {server.backend_type})")
+            logger.info(
+                "Loading model %s (backend: %s)",
+                server.model_name,
+                server.backend_type,
+            )
             backend = await model_manager.load_model(server)
-        except Exception as e:
-            error_msg = f"Failed to load model '{server.model_name}' (id: {server.id}, backend: {server.backend_type}). Error: {str(e)}"
+        except Exception as exc:  # noqa: BLE001
+            error_msg = (
+                f"Failed to load model '{server.model_name}' "
+                f"(id: {server.id}, backend: {server.backend_type}). "
+                f"Error: {exc!s}"
+            )
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
-    
+            raise RuntimeError(error_msg) from exc
+
     # Check if backend supports chat
     if not backend.supports_capability(ModelCapability.TEXT_GENERATION):
-        error_msg = f"Backend {server.backend_type} does not support text generation"
-        logger.error(error_msg)
-        raise HTTPException(
-            status_code=400, 
-            detail=error_msg
+        error_msg = (
+            f"Backend {server.backend_type} does not support text generation"
         )
-    
-    # Check for multimodal content
-    has_images = any(
-        _message_has_vision_content(msg) for msg in request.messages
-    )
-    
-    is_force_no_stream = not request.stream
-    
-    if has_images and not backend.supports_capability(ModelCapability.VISION):
-        error_msg = f"Backend {server.backend_type} does not support vision/multimodal input"
         logger.error(error_msg)
         raise HTTPException(
             status_code=400,
             detail=error_msg
         )
-        
+
+    # Check for multimodal content
+    has_images = any(
+        _message_has_vision_content(msg) for msg in request.messages
+    )
+
+    is_force_no_stream = not request.stream
+
+    if has_images and not backend.supports_capability(ModelCapability.VISION):
+        error_msg = (
+            f"Backend {server.backend_type} does not support vision/multimodal input"
+        )
+        logger.error(error_msg)
+        raise HTTPException(
+            status_code=400,
+            detail=error_msg
+        )
+
     if has_images:
         is_force_no_stream = True
 
@@ -316,13 +338,17 @@ async def handle_self_hosted_chat(server, request: ChatCompletionRequest):
             stream_chat_completion(server, request),
             media_type="text/event-stream"
         )
-    
+
     # Convert messages to format expected by backend
-    messages = [
-        {"role": msg.role, "content": msg.content}
-        for msg in request.messages
-    ]
-    
+    messages = []
+    for msg in request.messages:
+        payload = {"role": msg.role, "content": msg.content}
+        if msg.tool_calls:
+            payload["tool_calls"] = msg.tool_calls
+        if msg.tool_call_id:
+            payload["tool_call_id"] = msg.tool_call_id
+        messages.append(payload)
+
     # Generate response (backends are async)
     response_dict = await backend.generate_chat(
         messages=messages,
@@ -331,7 +357,7 @@ async def handle_self_hosted_chat(server, request: ChatCompletionRequest):
         max_tokens=request.max_tokens,
         stream=False
     )
-    
+
     # Extract response - backends return OpenAI-compatible format
     if isinstance(response_dict, dict):
         # If backend returns full OpenAI response, use it directly
@@ -343,7 +369,7 @@ async def handle_self_hosted_chat(server, request: ChatCompletionRequest):
         response_text = response_dict.get("text", "")
     else:
         response_text = str(response_dict)
-    
+
     # Format response in OpenAI format (legacy fallback)
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
@@ -369,48 +395,99 @@ async def handle_self_hosted_chat(server, request: ChatCompletionRequest):
 
 
 @router.post("/chat/completions")
-async def create_chat_completion(request: ChatCompletionRequest):
+async def create_chat_completion(request: ChatCompletionRequest):  # noqa: C901
     """Create a chat completion."""
     from src.libs.logging import logger
-    
-    try:
-        # Find server for the model
-        from src.libs.persistence import Persistence
-        persistence = Persistence()
-        servers = persistence.get_servers()
-        server = next((s for s in servers if s.model_name == request.model), None)
-        if not server:
-            error_msg = f"Model '{request.model}' not found. Available models: {[s.model_name for s in servers]}"
-            logger.error(error_msg)
-            raise HTTPException(status_code=404, detail=error_msg)
+    from src.libs.persistence import Persistence
 
-        # Route based on server mode
+    persistence = Persistence()
+    servers = persistence.get_servers()
+    server = next((s for s in servers if s.model_name == request.model), None)
+    if not server:
+        available_models = [s.model_name for s in servers]
+        error_msg = (
+            f"Model '{request.model}' not found. Available models: {available_models}"
+        )
+        logger.error(error_msg)
+        raise HTTPException(status_code=404, detail=error_msg)
+
+    async def invoke_model(call_request: ChatCompletionRequest):
         if server.mode == ServerMode.SELF_HOSTED:
             try:
-                return await handle_self_hosted_chat(server, request)
-            except RuntimeError as e:
-                # Backend errors - provide detailed message
-                error_msg = f"Backend error for model '{request.model}': {str(e)}"
+                return await handle_self_hosted_chat(server, call_request)
+            except RuntimeError as exc:
+                error_msg = (
+                    f"Backend error for model '{call_request.model}': {exc!s}"
+                )
                 logger.error(error_msg)
-                raise HTTPException(status_code=500, detail=str(e))
-            except ValueError as e:
-                # Invalid parameters
-                error_msg = f"Invalid request parameters for model '{request.model}': {str(e)}"
+                raise HTTPException(status_code=500, detail=str(exc)) from exc
+            except ValueError as exc:
+                error_msg = (
+                    "Invalid request parameters for model "
+                    f"'{call_request.model}': {exc!s}"
+                )
                 logger.error(error_msg)
-                raise HTTPException(status_code=400, detail=str(e))
-        else:
-            # Proxy mode
-            try:
-                raw_response = await proxy_request(server.endpoint_url, request.model_dump())
-                formatted_response = format_chat_response(raw_response)
-                return formatted_response
-            except Exception as e:
-                error_msg = f"Proxy request failed for model '{request.model}' to endpoint '{server.endpoint_url}': {str(e)}"
-                logger.error(error_msg)
-                raise HTTPException(status_code=502, detail=f"Proxy request failed: {str(e)}")
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            raw_response = await proxy_request(
+                server.endpoint_url,
+                call_request.model_dump(),
+            )
+            return format_chat_response(raw_response)
+        except Exception as exc:  # noqa: BLE001
+            error_msg = (
+                f"Proxy request failed for model '{call_request.model}' "
+                f"to endpoint '{server.endpoint_url}': {exc!s}"
+            )
+            logger.error(error_msg)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Proxy request failed: {exc!s}",
+            ) from exc
+
+    try:
+        response = await invoke_model(request)
+
+        # Streaming responses return immediately
+        # Tool automation currently disables streaming
+        if isinstance(response, StreamingResponse) or request.stream:
+            return response
+
+        if request.tools:
+            base_messages = [
+                message.model_dump(mode="python")
+                for message in request.messages
+            ]
+
+            async def call_llm_with_messages(
+                updated_messages: list[dict[str, Any]]
+            ) -> Any:
+                next_request = ChatCompletionRequest(
+                    model=request.model,
+                    messages=[
+                        ChatMessage(**message) for message in updated_messages
+                    ],
+                    temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                    tools=request.tools,
+                    stream=False,
+                )
+                return await invoke_model(next_request)
+
+            response = await handle_tool_calls(
+                base_messages=base_messages,
+                initial_response=response,
+                tools=request.tools,
+                call_llm=call_llm_with_messages,
+            )
     except HTTPException:
         raise
-    except Exception as e:
-        error_msg = f"Unexpected error in chat completion for model '{request.model}': {type(e).__name__}: {str(e)}"
+    except Exception as exc:  # noqa: BLE001
+        error_msg = (
+            f"Unexpected error in chat completion for model '{request.model}': "
+            f"{type(exc).__name__}: {exc!s}"
+        )
         logger.error(error_msg)
-        raise HTTPException(status_code=500, detail=error_msg)
+        raise HTTPException(status_code=500, detail=error_msg) from exc
+
+    return response

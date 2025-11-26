@@ -181,15 +181,13 @@ class VLLMBackend(ModelBackend):
                                 "content": None
                             }
                         else:
-                            # Simulate streaming by yielding words/tokens
-                            # In a real implementation with AsyncLLMEngine, this would be true streaming
-                            words = generated_text.split()
-                            for i, word in enumerate(words):
-                                if i == 0:
-                                    yield word
-                                else:
-                                    yield " " + word
-                                await asyncio.sleep(0.01)  # Small delay for visual effect
+                            # Simulate streaming while preserving whitespace/newlines
+                            for chunk in re.finditer(r"\s+|\S+", generated_text):
+                                piece = chunk.group(0)
+                                if not piece:
+                                    continue
+                                yield piece
+                                await asyncio.sleep(0.01)  # Short UX delay
                     except Exception as e:
                         error_msg = f"Error during streaming generation with model {self.model_path}. Error type: {type(e).__name__}, Error: {e}"
                         logger.error(error_msg)
@@ -314,6 +312,7 @@ class VLLMBackend(ModelBackend):
                 formatted_calls = []
                 for i, call in enumerate(tool_calls):
                     formatted_calls.append({
+                        "index": i,
                         "id": f"call_{int(time.time())}_{i}",
                         "type": "function",
                         "function": {
@@ -336,6 +335,7 @@ class VLLMBackend(ModelBackend):
                 try:
                     call_data = json.loads(match_text)
                     formatted_calls.append({
+                        "index": i,
                         "id": f"call_{int(time.time())}_{i}",
                         "type": "function",
                         "function": {
